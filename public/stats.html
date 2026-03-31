@@ -1,0 +1,19 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>问卷统计</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<h1>问卷统计</h1>
+<div id="surveyStats"></div>
+
+<script src="main.js"></script>
+<script>
+  const urlParams = new URLSearchParams(window.location.search);
+  const surveyId = urlParams.get("surveyId");
+  loadSurveyStats(surveyId);
+</script>
+</body>
+</html>

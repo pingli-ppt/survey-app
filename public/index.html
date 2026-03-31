@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>问卷系统</title>
+<style>
+body { font-family: Arial; margin: 20px; }
+label { display: block; margin-top: 10px; }
+input, select, button { margin-top: 5px; }
+.optionContainer { margin-left: 20px; }
+.questionBlock { border: 1px solid #ccc; padding: 10px; margin: 10px 0; }
+#questionArea { margin-top: 20px; }
+#surveyStats { margin-top: 20px; border-top: 1px solid #000; padding-top: 10px; white-space: pre-wrap; }
+</style>
+</head>
+<body>
+
+<h1>问卷系统首页</h1>
+
+<section>
+  <h2>注册 / 登录</h2>
+  <input id="username" placeholder="用户名">
+  <input id="password" placeholder="密码" type="password">
+  <button onclick="register()">注册</button>
+  <button onclick="login()">登录</button>
+  <p id="authResult"></p>
+</section>
+
+<hr>
+
+<section>
+  <h2>创建问卷</h2>
+  <input id="surveyTitle" placeholder="问卷标题">
+  <input id="surveyDesc" placeholder="问卷说明">
+  <label>允许匿名填写 <input type="checkbox" id="allowAnon"></label>
+  <button onclick="createSurvey()">创建问卷</button>
+  <p id="createResult"></p>
+</section>
+
+<hr>
+
+<section>
+  <h2>添加题目 & 配置跳转逻辑</h2>
+
+  <label>选择问卷：
+    <select id="selectSurvey"></select>
+  </label>
+
+  <label>题目ID：
+    <input type="text" id="questionId" value="q1">
+  </label>
+
+  <label>题型：
+    <select id="questionType">
+      <option value="single_choice">单选</option>
+      <option value="multi_choice">多选</option>
+      <option value="text">文本</option>
+      <option value="number">数字</option>
+    </select>
+  </label>
+
+  <label>必填：
+    <input type="checkbox" id="required" checked>
+  </label>
+
+  <div id="optionsContainer" class="optionContainer"></div>
+  <div id="validationContainer" class="optionContainer"></div>
+
+  <button onclick="addQuestion()">添加题目</button>
+  <p id="addQuestionResult"></p>
+
+  <hr>
+
+  <h3>添加跳转逻辑</h3>
+  <label>源题ID：<input id="logicSource" placeholder="源题ID"></label>
+  <label>目标题ID：<input id="logicTarget" placeholder="目标题ID"></label>
+  <label>选项值：<input id="logicValue" placeholder="选项值"></label>
+  <button onclick="addLogic()">添加跳转逻辑</button>
+  <p id="addLogicResult"></p>
+</section>
+
+<hr>
+
+<section>
+  <h2>填写问卷</h2>
+  <div id="questionArea"></div>
+  <button onclick="submitResponse()">提交答卷</button>
+  <p id="submitResult"></p>
+</section>
+
+<hr>
+
+<section>
+  <h2>统计结果</h2>
+  <button onclick="fetchStats()">查看统计</button>
+  <div id="surveyStats"></div>
+</section>
+
+<script src="main.js"></script>
+<script>
+  // 页面加载时初始化问卷列表
+  async function loadUserSurveys() {
+    try {
+      const res = await fetch("/my-surveys"); 
+      const surveys = await res.json();
+      const select = document.getElementById("selectSurvey");
+      select.innerHTML = "";
+      surveys.forEach(s => {
+        const opt = document.createElement("option");
+        opt.value = s.surveyId;
+        opt.text = s.title;
+        select.add(opt);
+      });
+      renderOptionsInput();
+      renderValidationInputs();
+    } catch (err) {
+      console.error(err);
+    }
+  }
+
+  loadUserSurveys();
+
+  // 根据题型动态显示选项输入
+  function renderOptionsInput() {
+    const container = document.getElementById("optionsContainer");
+    const type = document.getElementById("questionType").value;
+    container.innerHTML = "";
+    if (type === "single_choice" || type === "multi_choice") {
+      for (let i = 1; i <= 4; i++) {
+        const inp = document.createElement("input");
+        inp.className = "optionInput";
+        inp.placeholder = "选项" + i;
+        container.appendChild(inp);
+        container.appendChild(document.createElement("br"));
+      }
+    }
+  }
+
+  // 渲染校验输入
+  function renderValidationInputs() {
+    const container = document.getElementById("validationContainer");
+    container.innerHTML = "";
+    const type = document.getElementById("questionType").value;
+    if (type === "multi_choice") {
+      container.innerHTML = `
+        <label>最少选择 <input type="number" id="minSelect" value="1"></label>
+        <label>最多选择 <input type="number" id="maxSelect" value="3"></label>
+      `;
+    } else if (type === "text") {
+      container.innerHTML = `
+        <label>最少字数 <input type="number" id="minLength" value="0"></label>
+        <label>最多字数 <input type="number" id="maxLength" value="100"></label>
+      `;
+    } else if (type === "number") {
+      container.innerHTML = `
+        <label>最小值 <input type="number" id="minValue" value="0"></label>
+        <label>最大值 <input type="number" id="maxValue" value="120"></label>
+        <label>整数 <input type="checkbox" id="integerOnly" checked></label>
+      `;
+    }
+  }
+
+  document.getElementById("questionType").addEventListener("change", () => {
+    renderOptionsInput();
+    renderValidationInputs();
+  });
+</script>
+</body>
+</html>

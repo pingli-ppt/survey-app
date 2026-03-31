@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>问卷系统</title>
+<style>
+body { font-family: Arial; margin: 20px; }
+label { display: block; margin-top: 10px; }
+input, select, button { margin-top: 5px; }
+.optionContainer { margin-left: 20px; }
+.questionBlock { border: 1px solid #ccc; padding: 10px; margin: 10px 0; }
+#questionArea { margin-top: 20px; }
+#surveyStats { margin-top: 20px; border-top: 1px solid #000; padding-top: 10px; }
+</style>
+</head>
+<body>
+
+<h2>添加题目 & 配置跳转逻辑</h2>
+
+<label>选择问卷：
+  <select id="selectSurvey"></select>
+</label>
+
+<label>题目ID：
+  <input type="text" id="questionId" value="q1">
+</label>
+
+<label>题型：
+  <select id="questionType">
+    <option value="single_choice">单选</option>
+    <option value="multi_choice">多选</option>
+    <option value="text">文本</option>
+    <option value="number">数字</option>
+  </select>
+</label>
+
+<label>必填：
+  <input type="checkbox" id="required" checked>
+</label>
+
+<div id="optionsContainer" class="optionContainer"></div>
+<div id="validationContainer" class="optionContainer"></div>
+
+<button onclick="addQuestion()">添加题目</button>
+<div id="addQuestionResult"></div>
+
+<hr>
+
+<h2>填写问卷</h2>
+<div id="questionArea"></div>
+<button onclick="submitResponse()">提交答卷</button>
+<div id="submitResult"></div>
+
+<hr>
+
+<h2>统计结果</h2>
+<button onclick="fetchStats()">查看统计</button>
+<div id="surveyStats"></div>
+
+<script src="main.js"></script>
+</body>
+</html>
