@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>统计结果 - 问卷系统</title>
+    <title>创建问卷 - 问卷系统</title>
     <style>
         * {
             margin: 0;
@@ -12,301 +12,224 @@
         }
         body {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-            background: #f5f5f5;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
             padding: 20px;
         }
         .container {
-            max-width: 1000px;
+            max-width: 600px;
             margin: 0 auto;
-        }
-        .header {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
-            padding: 20px;
-            border-radius: 12px;
-            margin-bottom: 20px;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-        }
-        .back-btn {
-            background: rgba(255,255,255,0.2);
-            border: none;
-            padding: 8px 16px;
-            border-radius: 8px;
-            color: white;
-            cursor: pointer;
-            text-decoration: none;
         }
         .card {
             background: white;
-            border-radius: 12px;
-            padding: 25px;
-            margin-bottom: 20px;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            border-radius: 16px;
+            padding: 30px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.2);
         }
-        .stats-header {
-            text-align: center;
-            margin-bottom: 30px;
-        }
-        .total-responses {
-            font-size: 36px;
-            font-weight: bold;
-            color: #667eea;
-        }
-        .question-stats {
-            margin-top: 30px;
-            padding-top: 20px;
-            border-top: 1px solid #eee;
-        }
-        .question-title {
-            font-size: 18px;
-            font-weight: 500;
-            margin-bottom: 15px;
+        h1 {
+            margin-bottom: 10px;
             color: #333;
         }
-        .option-bar {
-            margin: 10px 0;
+        .subtitle {
+            color: #666;
+            margin-bottom: 30px;
+            font-size: 14px;
+        }
+        .form-group {
+            margin-bottom: 20px;
+        }
+        label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 500;
+            color: #333;
+        }
+        input, textarea, select {
+            width: 100%;
+            padding: 10px 12px;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            font-size: 14px;
+            font-family: inherit;
+        }
+        textarea {
+            resize: vertical;
+            min-height: 80px;
+        }
+        .checkbox-group {
             display: flex;
             align-items: center;
             gap: 10px;
         }
-        .option-label {
-            width: 150px;
-            font-size: 14px;
+        .checkbox-group input {
+            width: auto;
         }
-        .bar {
-            flex: 1;
-            height: 30px;
-            background: #e9ecef;
-            border-radius: 15px;
-            overflow: hidden;
-        }
-        .bar-fill {
-            height: 100%;
+        button {
+            width: 100%;
+            padding: 12px;
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            display: flex;
-            align-items: center;
-            justify-content: flex-end;
-            padding-right: 10px;
             color: white;
-            font-size: 12px;
-        }
-        .option-count {
-            width: 60px;
-            text-align: right;
-            font-size: 14px;
-            color: #666;
-        }
-        .answers-list {
-            max-height: 300px;
-            overflow-y: auto;
-            background: #f8f9fa;
-            padding: 15px;
+            border: none;
             border-radius: 8px;
+            font-size: 16px;
+            cursor: pointer;
+            margin-top: 20px;
         }
-        .answer-item {
-            padding: 8px;
-            border-bottom: 1px solid #eee;
-            font-family: monospace;
+        button:hover {
+            opacity: 0.9;
+        }
+        button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+        .back-link {
+            display: block;
+            text-align: center;
+            margin-top: 20px;
+            color: white;
+            text-decoration: none;
+        }
+        .error-msg {
+            background: #f8d7da;
+            color: #721c24;
+            padding: 10px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+        }
+        .success-msg {
+            background: #d4edda;
+            color: #155724;
+            padding: 10px;
+            border-radius: 8px;
+            margin-bottom: 20px;
         }
         .loading {
             text-align: center;
-            padding: 50px;
+            padding: 20px;
             color: #999;
-        }
-        .error {
-            background: #f8d7da;
-            color: #721c24;
-            padding: 12px;
-            border-radius: 8px;
         }
     </style>
 </head>
 <body>
     <div class="container">
-        <div class="header">
-            <h1>📊 问卷统计</h1>
-            <a href="/dashboard.html" class="back-btn">← 返回控制台</a>
+        <div class="card">
+            <h1>📝 创建新问卷</h1>
+            <div class="subtitle">填写问卷基本信息，稍后可以添加题目</div>
+            
+            <div id="message"></div>
+            
+            <form id="createForm">
+                <div class="form-group">
+                    <label>问卷标题 *</label>
+                    <input type="text" id="title" required placeholder="例如：用户满意度调查">
+                </div>
+                
+                <div class="form-group">
+                    <label>问卷描述</label>
+                    <textarea id="description" placeholder="简单介绍一下这份问卷的目的..."></textarea>
+                </div>
+                
+                <div class="form-group">
+                    <label class="checkbox-group">
+                        <input type="checkbox" id="allowAnonymous">
+                        <span>允许匿名提交</span>
+                    </label>
+                </div>
+                
+                <div class="form-group">
+                    <label class="checkbox-group">
+                        <input type="checkbox" id="allowMultipleSubmit" checked>
+                        <span>允许重复提交</span>
+                    </label>
+                </div>
+                
+                <div class="form-group">
+                    <label>截止日期（可选）</label>
+                    <input type="datetime-local" id="deadline">
+                </div>
+                
+                <button type="submit" id="submitBtn">创建问卷 →</button>
+            </form>
         </div>
-        <div id="content">
-            <div class="loading">加载中...</div>
-        </div>
+        <a href="/dashboard.html" class="back-link">← 返回控制台</a>
     </div>
     
     <script>
         const API_BASE = '/api';
         
-        function getUrlParams() {
-            const params = {};
-            const query = window.location.search.substring(1);
-            const pairs = query.split('&');
-            for (const pair of pairs) {
-                const [key, value] = pair.split('=');
-                if (key) params[decodeURIComponent(key)] = decodeURIComponent(value || '');
-            }
-            return params;
+        // 检查登录状态
+        const token = localStorage.getItem('token');
+        if (!token) {
+            window.location.href = '/';
         }
         
-        async function loadStats() {
-            const params = getUrlParams();
-            const surveyId = params.surveyId;
-            const token = localStorage.getItem('token');
+        const form = document.getElementById('createForm');
+        const submitBtn = document.getElementById('submitBtn');
+        const messageDiv = document.getElementById('message');
+        
+        form.addEventListener('submit', async (e) => {
+            e.preventDefault();
             
-            if (!token) {
-                document.getElementById('content').innerHTML = `
-                    <div class="card">
-                        <div class="error">请先登录</div>
-                        <a href="/">返回首页</a>
-                    </div>
-                `;
+            const title = document.getElementById('title').value.trim();
+            if (!title) {
+                showMessage('请填写问卷标题', 'error');
                 return;
             }
             
-            if (!surveyId) {
-                document.getElementById('content').innerHTML = `
-                    <div class="card">
-                        <div class="error">缺少问卷ID</div>
-                        <a href="/dashboard.html">返回控制台</a>
-                    </div>
-                `;
-                return;
-            }
+            const data = {
+                title: title,
+                description: document.getElementById('description').value.trim(),
+                allowAnonymous: document.getElementById('allowAnonymous').checked,
+                allowMultipleSubmit: document.getElementById('allowMultipleSubmit').checked,
+                deadline: document.getElementById('deadline').value || null
+            };
+            
+            submitBtn.disabled = true;
+            submitBtn.textContent = '创建中...';
+            showMessage('正在创建问卷...', 'loading');
             
             try {
-                const res = await fetch(`${API_BASE}/survey-stats/${surveyId}`, {
-                    headers: { 'Authorization': `Bearer ${token}` }
+                const res = await fetch(`${API_BASE}/create-survey`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${token}`
+                    },
+                    body: JSON.stringify(data)
                 });
-                const data = await res.json();
                 
-                if (!data.success) {
-                    throw new Error(data.error);
+                const result = await res.json();
+                
+                if (result.success) {
+                    showMessage('✅ 问卷创建成功！正在跳转...', 'success');
+                    
+                    // 重要：保存创建的问卷信息
+                    console.log('创建的问卷:', result.survey);
+                    console.log('surveyId:', result.survey.surveyId);
+                    
+                    // 跳转到编辑页面（可以添加题目）
+                    setTimeout(() => {
+                        window.location.href = `/edit.html?surveyId=${result.survey.surveyId}`;
+                    }, 1500);
+                } else {
+                    showMessage('❌ 创建失败：' + (result.error || '未知错误'), 'error');
+                    submitBtn.disabled = false;
+                    submitBtn.textContent = '创建问卷 →';
                 }
-                
-                renderStats(data.stats);
             } catch (err) {
-                document.getElementById('content').innerHTML = `
-                    <div class="card">
-                        <div class="error">❌ 加载失败：${err.message}</div>
-                        <a href="/dashboard.html">返回控制台</a>
-                    </div>
-                `;
+                console.error('创建问卷错误:', err);
+                showMessage('❌ 网络错误：' + err.message, 'error');
+                submitBtn.disabled = false;
+                submitBtn.textContent = '创建问卷 →';
+            }
+        });
+        
+        function showMessage(msg, type) {
+            messageDiv.innerHTML = `<div class="${type}-msg">${msg}</div>`;
+            if (type === 'loading') {
+                messageDiv.innerHTML = `<div class="loading">${msg}</div>`;
             }
         }
-        
-        function renderStats(stats) {
-            const questionsHtml = Object.entries(stats.questions).map(([qId, qStat]) => {
-                return `
-                    <div class="question-stats">
-                        <div class="question-title">📌 ${escapeHtml(qStat.title)} (${getTypeName(qStat.type)})</div>
-                        <div style="margin-bottom: 15px; color: #666;">共 ${qStat.total} 人回答</div>
-                        ${renderStatContent(qStat)}
-                    </div>
-                `;
-            }).join('');
-            
-            document.getElementById('content').innerHTML = `
-                <div class="card">
-                    <div class="stats-header">
-                        <div class="total-responses">${stats.totalResponses}</div>
-                        <div style="color: #666;">总填写人数</div>
-                    </div>
-                </div>
-                <div class="card">
-                    <h2>📋 题目统计详情</h2>
-                    ${questionsHtml || '<div style="text-align:center;color:#999;">暂无数据</div>'}
-                </div>
-            `;
-        }
-        
-        function renderStatContent(qStat) {
-            if (qStat.type === 'single_choice' && qStat.options) {
-                const total = qStat.total || 1;
-                return Object.entries(qStat.options).map(([value, opt]) => {
-                    const percent = ((opt.count / total) * 100).toFixed(1);
-                    return `
-                        <div class="option-bar">
-                            <div class="option-label">${escapeHtml(opt.label)}</div>
-                            <div class="bar">
-                                <div class="bar-fill" style="width: ${percent}%">${percent}%</div>
-                            </div>
-                            <div class="option-count">${opt.count} 人</div>
-                        </div>
-                    `;
-                }).join('');
-            }
-            else if (qStat.type === 'multi_choice' && qStat.options) {
-                const totalSelections = qStat.totalSelections || 1;
-                return Object.entries(qStat.options).map(([value, opt]) => {
-                    const percent = ((opt.count / totalSelections) * 100).toFixed(1);
-                    return `
-                        <div class="option-bar">
-                            <div class="option-label">${escapeHtml(opt.label)}</div>
-                            <div class="bar">
-                                <div class="bar-fill" style="width: ${percent}%">${percent}%</div>
-                            </div>
-                            <div class="option-count">${opt.count} 次</div>
-                        </div>
-                    `;
-                }).join('');
-            }
-            else if (qStat.type === 'text') {
-                return `
-                    <div class="answers-list">
-                        ${qStat.answers && qStat.answers.length ? qStat.answers.map(ans => 
-                            `<div class="answer-item">📝 ${escapeHtml(String(ans))}</div>`
-                        ).join('') : '<div style="color:#999;">暂无回答</div>'}
-                    </div>
-                `;
-            }
-            else if (qStat.type === 'number') {
-                return `
-                    <div style="display: flex; gap: 20px; flex-wrap: wrap;">
-                        <div style="background: #e9ecef; padding: 15px; border-radius: 8px; flex: 1;">
-                            <div style="font-size: 12px; color: #666;">平均值</div>
-                            <div style="font-size: 24px; font-weight: bold;">${qStat.avg || '-'}</div>
-                        </div>
-                        <div style="background: #e9ecef; padding: 15px; border-radius: 8px; flex: 1;">
-                            <div style="font-size: 12px; color: #666;">最小值</div>
-                            <div style="font-size: 24px; font-weight: bold;">${qStat.min ?? '-'}</div>
-                        </div>
-                        <div style="background: #e9ecef; padding: 15px; border-radius: 8px; flex: 1;">
-                            <div style="font-size: 12px; color: #666;">最大值</div>
-                            <div style="font-size: 24px; font-weight: bold;">${qStat.max ?? '-'}</div>
-                        </div>
-                    </div>
-                    <div class="answers-list" style="margin-top: 15px;">
-                        <div style="font-weight: 500; margin-bottom: 10px;">所有填写值：</div>
-                        ${qStat.values && qStat.values.length ? qStat.values.map(v => 
-                            `<div class="answer-item">🔢 ${v}</div>`
-                        ).join('') : '<div style="color:#999;">暂无数据</div>'}
-                    </div>
-                `;
-            }
-            return '<div style="color:#999;">暂无统计</div>';
-        }
-        
-        function getTypeName(type) {
-            const types = {
-                'single_choice': '单选题',
-                'multi_choice': '多选题',
-                'text': '文本填空',
-                'number': '数字填空'
-            };
-            return types[type] || type;
-        }
-        
-        function escapeHtml(str) {
-            if (!str) return '';
-            return String(str).replace(/[&<>]/g, function(m) {
-                if (m === '&') return '&amp;';
-                if (m === '<') return '&lt;';
-                if (m === '>') return '&gt;';
-                return m;
-            });
-        }
-        
-        loadStats();
     </script>
 </body>
 </html>

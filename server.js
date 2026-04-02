@@ -610,6 +610,199 @@ app.get("/api/test-register", async (req, res) => {
     res.json({ success: false, error: err.message });
   }
 });
+// 获取我的单个问卷详情（带完整题目和逻辑）
+app.get("/api/my-survey/:surveyId", authMiddleware, async (req, res) => {
+  try {
+    console.log("获取问卷详情，surveyId:", req.params.surveyId);
+    console.log("用户ID:", req.user._id);
+    
+    const survey = await Survey.findOne({ 
+      surveyId: req.params.surveyId, 
+      creatorId: req.user._id 
+    });
+    
+    if (!survey) {
+      return res.status(404).json({ error: "问卷不存在" });
+    }
+    
+    res.json({ 
+      success: true, 
+      survey: {
+        _id: survey._id,
+        surveyId: survey.surveyId,
+        title: survey.title,
+        description: survey.description,
+        status: survey.status,
+        deadline: survey.deadline,
+        allowAnonymous: survey.allowAnonymous,
+        allowMultipleSubmit: survey.allowMultipleSubmit,
+        questions: survey.questions,
+        createdAt: survey.createdAt
+      }
+    });
+  } catch (err) {
+    console.error("获取问卷详情错误:", err);
+    res.status(500).json({ error: err.message });
+  }
+});
+// 更新问卷信息
+app.put("/api/update-survey", authMiddleware, async (req, res) => {
+  try {
+    const { surveyId, title, description, status } = req.body;
+    
+    const survey = await Survey.findOne({ surveyId, creatorId: req.user._id });
+    if (!survey) {
+      return res.status(404).json({ error: "问卷不存在或无权限" });
+    }
+    
+    if (title) survey.title = title;
+    if (description !== undefined) survey.description = description;
+    if (status) survey.status = status;
+    
+    await survey.save();
+    
+    res.json({ success: true, message: "问卷信息更新成功", survey });
+  } catch (err) {
+    console.error("更新问卷错误:", err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// 删除题目
+app.delete("/api/delete-question", authMiddleware, async (req, res) => {
+  try {
+    const { surveyId, questionId } = req.body;
+    
+    const survey = await Survey.findOne({ surveyId, creatorId: req.user._id });
+    if (!survey) {
+      return res.status(404).json({ error: "问卷不存在或无权限" });
+    }
+    
+    const questionIndex = survey.questions.findIndex(q => q.questionId === questionId);
+    if (questionIndex === -1) {
+      return res.status(404).json({ error: "题目不存在" });
+    }
+    
+    survey.questions.splice(questionIndex, 1);
+    
+    // 重新排序
+    survey.questions.forEach((q, idx) => {
+      q.order = idx;
+    });
+    
+    await survey.save();
+    
+    res.json({ success: true, message: "题目删除成功" });
+  } catch (err) {
+    console.error("删除题目错误:", err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// 删除跳转逻辑
+app.delete("/api/delete-logic", authMiddleware, async (req, res) => {
+  try {
+    const { surveyId, questionId, logicIndex } = req.body;
+    
+    const survey = await Survey.findOne({ surveyId, creatorId: req.user._id });
+    if (!survey) {
+      return res.status(404).json({ error: "问卷不存在或无权限" });
+    }
+    
+    const question = survey.questions.find(q => q.questionId === questionId);
+    if (!question) {
+      return res.status(404).json({ error: "题目不存在" });
+    }
+    
+    if (!question.logic || logicIndex >= question.logic.length) {
+      return res.status(404).json({ error: "跳转逻辑不存在" });
+    }
+    
+    question.logic.splice(logicIndex, 1);
+    
+    await survey.save();
+    
+    res.json({ success: true, message: "跳转逻辑删除成功" });
+  } catch (err) {
+    console.error("删除跳转逻辑错误:", err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// 更新题目
+app.put("/api/update-question", authMiddleware, async (req, res) => {
+  try {
+    const { surveyId, questionId, title, required, config } = req.body;
+    
+    const survey = await Survey.findOne({ surveyId, creatorId: req.user._id });
+    if (!survey) {
+      return res.status(404).json({ error: "问卷不存在或无权限" });
+    }
+    
+    const question = survey.questions.find(q => q.questionId === questionId);
+    if (!question) {
+      return res.status(404).json({ error: "题目不存在" });
+    }
+    
+    if (title) question.title = title;
+    if (required !== undefined) question.required = required;
+    if (config) question.config = { ...question.config, ...config };
+    
+    await survey.save();
+    
+    res.json({ success: true, message: "题目更新成功", question });
+  } catch (err) {
+    console.error("更新题目错误:", err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// 发布问卷
+app.post("/api/publish-survey/:surveyId", authMiddleware, async (req, res) => {
+  try {
+    const survey = await Survey.findOne({ 
+      surveyId: req.params.surveyId, 
+      creatorId: req.user._id 
+    });
+    
+    if (!survey) {
+      return res.status(404).json({ error: "问卷不存在或无权限" });
+    }
+    
+    survey.status = "published";
+    survey.publishedAt = new Date();
+    
+    await survey.save();
+    
+    res.json({ success: true, message: "问卷发布成功", survey });
+  } catch (err) {
+    console.error("发布问卷错误:", err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// 关闭问卷
+app.post("/api/close-survey/:surveyId", authMiddleware, async (req, res) => {
+  try {
+    const survey = await Survey.findOne({ 
+      surveyId: req.params.surveyId, 
+      creatorId: req.user._id 
+    });
+    
+    if (!survey) {
+      return res.status(404).json({ error: "问卷不存在或无权限" });
+    }
+    
+    survey.status = "closed";
+    
+    await survey.save();
+    
+    res.json({ success: true, message: "问卷已关闭", survey });
+  } catch (err) {
+    console.error("关闭问卷错误:", err);
+    res.status(500).json({ error: err.message });
+  }
+});
 
 // 启动服务器
 const PORT = 3000;
