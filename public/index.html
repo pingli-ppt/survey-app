@@ -1,102 +1,309 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
-<meta charset="UTF-8">
-<title>问卷系统</title>
-<link rel="stylesheet" href="style.css">
-<style>
-body { font-family: Arial; margin: 20px; }
-label { display: block; margin-top: 10px; }
-input, select, button { margin-top: 5px; }
-.optionContainer { margin-left: 20px; }
-.questionBlock { border: 1px solid #ccc; padding: 10px; margin: 10px 0; }
-#questionArea { margin-top: 20px; }
-#surveyStats { margin-top: 20px; border-top: 1px solid #000; padding-top: 10px; white-space: pre-wrap; }
-</style>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>问卷系统</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+        .container {
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            padding: 40px;
+            width: 400px;
+            max-width: 90%;
+        }
+        h1 {
+            text-align: center;
+            color: #333;
+            margin-bottom: 30px;
+        }
+        .tabs {
+            display: flex;
+            margin-bottom: 20px;
+            border-bottom: 2px solid #eee;
+        }
+        .tab {
+            flex: 1;
+            text-align: center;
+            padding: 10px;
+            cursor: pointer;
+            color: #666;
+            transition: all 0.3s;
+        }
+        .tab.active {
+            color: #667eea;
+            border-bottom: 2px solid #667eea;
+            margin-bottom: -2px;
+        }
+        .form {
+            display: none;
+        }
+        .form.active {
+            display: block;
+        }
+        input {
+            width: 100%;
+            padding: 12px;
+            margin: 10px 0;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            font-size: 14px;
+        }
+        button {
+            width: 100%;
+            padding: 12px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-size: 16px;
+            cursor: pointer;
+            margin-top: 10px;
+        }
+        button:hover {
+            opacity: 0.9;
+        }
+        button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+        .error {
+            color: #e74c3c;
+            font-size: 14px;
+            margin-top: 10px;
+            text-align: center;
+        }
+        .success {
+            color: #27ae60;
+            font-size: 14px;
+            margin-top: 10px;
+            text-align: center;
+        }
+        .link {
+            text-align: center;
+            margin-top: 20px;
+            color: #667eea;
+            cursor: pointer;
+        }
+        .survey-link {
+            margin-top: 20px;
+            padding: 10px;
+            background: #f8f9fa;
+            border-radius: 8px;
+            word-break: break-all;
+        }
+        .loading {
+            display: inline-block;
+            width: 14px;
+            height: 14px;
+            border: 2px solid #fff;
+            border-radius: 50%;
+            border-top-color: transparent;
+            animation: spin 0.6s linear infinite;
+            margin-right: 8px;
+        }
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+    </style>
 </head>
 <body>
-
-<h1>问卷系统首页</h1>
-
-<section>
-  <h2>注册 / 登录</h2>
-  <input id="username" placeholder="用户名">
-  <input id="password" placeholder="密码" type="password">
-  <button onclick="register()">注册</button>
-  <button onclick="login()">登录</button>
-  <p id="authResult"></p>
-</section>
-
-<hr>
-
-<section>
-  <h2>创建问卷（一次性完成）</h2>
-  <input id="surveyTitle" placeholder="问卷标题">
-  <input id="surveyDesc" placeholder="问卷说明">
-  <label>允许匿名填写 <input type="checkbox" id="allowAnon"></label>
-
-  <hr>
-
-  <h3>添加题目</h3>
-  <label>题目ID：<input type="text" id="questionId" value="q1"></label>
-  <label>题型：
-    <select id="questionType">
-      <option value="single_choice">单选</option>
-      <option value="multi_choice">多选</option>
-      <option value="text">文本</option>
-      <option value="number">数字</option>
-    </select>
-  </label>
-  <label>必填：<input type="checkbox" id="required" checked></label>
-
-  <div id="optionsContainer" class="optionContainer"></div>
-  <div id="validationContainer" class="optionContainer"></div>
-
-  <button onclick="addQuestionToLocal()">添加题目到问卷</button>
-  <p id="addQuestionResult"></p>
-
-  <hr>
-
-  <h3>添加跳转逻辑</h3>
-  <label>源题ID：<input id="logicSource" placeholder="源题ID"></label>
-  <label>目标题ID：<input id="logicTarget" placeholder="目标题ID"></label>
-  <label>选项值：<input id="logicValue" placeholder="选项值"></label>
-  <button onclick="addLogicToLocal()">添加跳转逻辑</button>
-  <p id="addLogicResult"></p>
-
-  <hr>
-
-  <button onclick="submitSurvey()">提交整个问卷</button>
-  <p id="submitSurveyResult"></p>
-</section>
-
-<hr>
-
-<section>
-  <h2>填写问卷</h2>
-  <div id="questionArea"></div>
-  <button onclick="submitResponse()">提交答卷</button>
-  <p id="submitResult"></p>
-</section>
-
-<hr>
-
-<section>
-  <h2>统计结果</h2>
-  <button onclick="fetchStats()">查看统计</button>
-  <div id="surveyStats"></div>
-</section>
-
-<script src="main.js"></script>
-<script>
-window.onload = () => {
-  renderOptionsInput();
-  renderValidationInputs();
-  document.getElementById("questionType").addEventListener("change", () => {
-    renderOptionsInput();
-    renderValidationInputs();
-  });
-};
-</script>
+    <div class="container">
+        <h1>📋 问卷系统</h1>
+        
+        <div class="tabs">
+            <div class="tab active" onclick="switchTab('login')">登录</div>
+            <div class="tab" onclick="switchTab('register')">注册</div>
+            <div class="tab" onclick="switchTab('fill')">填写问卷</div>
+        </div>
+        
+        <!-- 登录表单 -->
+        <div id="loginForm" class="form active">
+            <input type="text" id="loginUsername" placeholder="用户名" autocomplete="off">
+            <input type="password" id="loginPassword" placeholder="密码">
+            <button id="loginBtn" onclick="login()">登录</button>
+            <div id="loginMessage"></div>
+        </div>
+        
+        <!-- 注册表单 -->
+        <div id="registerForm" class="form">
+            <input type="text" id="regUsername" placeholder="用户名 (至少3个字符)" autocomplete="off">
+            <input type="password" id="regPassword" placeholder="密码 (至少6个字符)">
+            <input type="email" id="regEmail" placeholder="邮箱（选填）">
+            <button id="registerBtn" onclick="register()">注册</button>
+            <div id="regMessage"></div>
+        </div>
+        
+        <!-- 填写问卷 -->
+        <div id="fillForm" class="form">
+            <input type="text" id="surveyIdInput" placeholder="问卷ID，如：SURVEY_1734567890123_abc123">
+            <button onclick="loadSurvey()">开始填写</button>
+            <div id="fillMessage"></div>
+        </div>
+    </div>
+    
+    <script>
+        const API_BASE = '/api';
+        
+        function switchTab(tab) {
+            document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+            document.querySelectorAll('.form').forEach(f => f.classList.remove('active'));
+            
+            if (tab === 'login') {
+                document.querySelector('.tab:nth-child(1)').classList.add('active');
+                document.getElementById('loginForm').classList.add('active');
+            } else if (tab === 'register') {
+                document.querySelector('.tab:nth-child(2)').classList.add('active');
+                document.getElementById('registerForm').classList.add('active');
+            } else {
+                document.querySelector('.tab:nth-child(3)').classList.add('active');
+                document.getElementById('fillForm').classList.add('active');
+            }
+        }
+        
+        function showLoading(buttonId, show) {
+            const btn = document.getElementById(buttonId);
+            if (show) {
+                btn.disabled = true;
+                btn.innerHTML = '<span class="loading"></span> 处理中...';
+            } else {
+                btn.disabled = false;
+                btn.innerHTML = btn.id === 'loginBtn' ? '登录' : '注册';
+            }
+        }
+        
+        async function login() {
+            const username = document.getElementById('loginUsername').value.trim();
+            const password = document.getElementById('loginPassword').value;
+            const msgDiv = document.getElementById('loginMessage');
+            
+            if (!username || !password) {
+                msgDiv.innerHTML = '<div class="error">请输入用户名和密码</div>';
+                return;
+            }
+            
+            showLoading('loginBtn', true);
+            msgDiv.innerHTML = '';
+            
+            try {
+                const res = await fetch(`${API_BASE}/login`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ username, password })
+                });
+                const data = await res.json();
+                
+                if (data.success) {
+                    localStorage.setItem('token', data.token);
+                    localStorage.setItem('user', JSON.stringify(data.user));
+                    msgDiv.innerHTML = '<div class="success">✅ 登录成功！正在跳转...</div>';
+                    setTimeout(() => {
+                        window.location.href = '/dashboard.html';
+                    }, 1000);
+                } else {
+                    msgDiv.innerHTML = `<div class="error">❌ ${data.error}</div>`;
+                }
+            } catch (err) {
+                msgDiv.innerHTML = `<div class="error">❌ 网络错误：${err.message}</div>`;
+            } finally {
+                showLoading('loginBtn', false);
+            }
+        }
+        
+        async function register() {
+            const username = document.getElementById('regUsername').value.trim();
+            const password = document.getElementById('regPassword').value;
+            const email = document.getElementById('regEmail').value.trim();
+            const msgDiv = document.getElementById('regMessage');
+            
+            // 客户端验证
+            if (!username || !password) {
+                msgDiv.innerHTML = '<div class="error">请填写用户名和密码</div>';
+                return;
+            }
+            
+            if (username.length < 3) {
+                msgDiv.innerHTML = '<div class="error">用户名至少需要3个字符</div>';
+                return;
+            }
+            
+            if (password.length < 6) {
+                msgDiv.innerHTML = '<div class="error">密码至少需要6个字符</div>';
+                return;
+            }
+            
+            showLoading('registerBtn', true);
+            msgDiv.innerHTML = '';
+            
+            try {
+                console.log('发送注册请求:', { username, password, email });
+                
+                const res = await fetch(`${API_BASE}/register`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ username, password, email })
+                });
+                
+                const data = await res.json();
+                console.log('注册响应:', data);
+                
+                if (data.success) {
+                    // 保存 token 和用户信息
+                    localStorage.setItem('token', data.token);
+                    localStorage.setItem('user', JSON.stringify(data.user));
+                    
+                    msgDiv.innerHTML = '<div class="success">✅ 注册成功！正在跳转到控制台...</div>';
+                    
+                    // 延迟跳转，让用户看到成功消息
+                    setTimeout(() => {
+                        window.location.href = '/dashboard.html';
+                    }, 1500);
+                } else {
+                    msgDiv.innerHTML = `<div class="error">❌ ${data.error || '注册失败'}</div>`;
+                }
+            } catch (err) {
+                console.error('注册错误:', err);
+                msgDiv.innerHTML = `<div class="error">❌ 网络错误：${err.message}</div>`;
+            } finally {
+                showLoading('registerBtn', false);
+            }
+        }
+        
+        function loadSurvey() {
+            const surveyId = document.getElementById('surveyIdInput').value.trim();
+            if (!surveyId) {
+                document.getElementById('fillMessage').innerHTML = '<div class="error">请输入问卷ID</div>';
+                return;
+            }
+            window.location.href = `/survey.html?surveyId=${encodeURIComponent(surveyId)}`;
+        }
+        
+        // 检查是否已登录
+        const token = localStorage.getItem('token');
+        if (token) {
+            const container = document.querySelector('.container');
+            const linkDiv = document.createElement('div');
+            linkDiv.className = 'survey-link';
+            linkDiv.innerHTML = `
+                <div class="success">✅ 您已登录</div>
+                <a href="/dashboard.html" style="display:block;text-align:center;margin-top:10px;color:#667eea;text-decoration:none;">进入控制台 →</a>
+            `;
+            container.appendChild(linkDiv);
+        }
+    </script>
 </body>
 </html>

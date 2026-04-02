@@ -1,198 +1,629 @@
 const express = require("express");
-const mongoose = require("./db"); // 你的 MongoDB 连接文件
+const mongoose = require("mongoose");
+const jwt = require("jsonwebtoken");
+const path = require("path");
+
+const User = require("./models/User");
 const Survey = require("./models/Survey");
 const Response = require("./models/Response");
-const User = require("./models/User");
 
 const app = express();
+const JWT_SECRET = "survey-system-secret-key-2024";
 
-// JSON 支持
+// 连接数据库
+mongoose.connect("mongodb://127.0.0.1:27017/survey_db");
+
+mongoose.connection.on("connected", () => {
+  console.log("✅ MongoDB 连接成功");
+});
+
+mongoose.connection.on("error", (err) => {
+  console.error("❌ MongoDB 连接失败:", err);
+});
+
+// 中间件
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(express.static("public"));
 
-// 测试接口
-app.get("/", (req, res) => {
-  res.send("后端启动成功 🚀");
-});
-
-// 注册用户
-app.post("/register", async (req, res) => {
+// ========== 认证中间件 ==========
+const authMiddleware = async (req, res, next) => {
   try {
-    const { username, password, email } = req.body;
-    const user = new User({ username, password, email });
-    await user.save();
-    res.json({ message: "注册成功", user });
+    const token = req.headers.authorization?.replace("Bearer ", "");
+    if (!token) {
+      return res.status(401).json({ error: "未登录，请先登录" });
+    }
+    
+    const decoded = jwt.verify(token, JWT_SECRET);
+    const user = await User.findById(decoded.userId).select("-password");
+    
+    if (!user) {
+      return res.status(401).json({ error: "用户不存在" });
+    }
+    
+    req.user = user;
+    next();
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    return res.status(401).json({ error: "登录已过期，请重新登录" });
+  }
+};
+
+// ========== 校验函数 ==========
+function validateAnswer(question, answer) {
+  const config = question.config || {};
+  
+  // 空值处理
+  if (answer === undefined || answer === null || answer === "") {
+    if (question.required) {
+      return "此题为必填项";
+    }
+    return null;
+  }
+  
+  switch (question.type) {
+    case "single_choice":
+      if (!config.options?.find(o => o.value === answer)) {
+        return "选项无效";
+      }
+      break;
+      
+    case "multi_choice":
+      if (!Array.isArray(answer)) return "答案格式错误";
+      if (config.minSelect && answer.length < config.minSelect) {
+        return `至少选择 ${config.minSelect} 个选项`;
+      }
+      if (config.maxSelect && answer.length > config.maxSelect) {
+        return `最多选择 ${config.maxSelect} 个选项`;
+      }
+      if (config.minSelect && config.maxSelect && config.minSelect === config.maxSelect) {
+        if (answer.length !== config.minSelect) {
+          return `请选择 ${config.minSelect} 个选项`;
+        }
+      }
+      break;
+      
+    case "text":
+      const len = answer.toString().length;
+      if (config.minLength && len < config.minLength) {
+        return `最少需要 ${config.minLength} 个字符`;
+      }
+      if (config.maxLength && len > config.maxLength) {
+        return `最多允许 ${config.maxLength} 个字符`;
+      }
+      break;
+      
+    case "number":
+      const num = Number(answer);
+      if (isNaN(num)) return "请输入数字";
+      if (config.integerOnly && !Number.isInteger(num)) return "请输入整数";
+      if (config.minValue !== undefined && num < config.minValue) {
+        return `不能小于 ${config.minValue}`;
+      }
+      if (config.maxValue !== undefined && num > config.maxValue) {
+        return `不能大于 ${config.maxValue}`;
+      }
+      break;
+  }
+  
+  return null;
+}
+
+// ========== 跳转逻辑函数 ==========
+async function getNextQuestionId(survey, currentQuestionId, answer) {
+  const currentQ = survey.questions.find(q => q.questionId === currentQuestionId);
+  if (!currentQ || !currentQ.logic?.length) return null;
+  
+  for (const rule of currentQ.logic.sort((a, b) => (a.priority || 0) - (b.priority || 0))) {
+    let match = true;
+    
+    for (const cond of rule.conditions) {
+      if (cond.type === "option_selected") {
+        if (answer !== cond.optionValue) match = false;
+      }
+      else if (cond.type === "option_any") {
+        if (!Array.isArray(answer) || !answer.includes(cond.optionValue)) match = false;
+      }
+      else if (cond.type === "value_range") {
+        const num = Number(answer);
+        if (isNaN(num) || num < cond.min || num > cond.max) match = false;
+      }
+    }
+    
+    if (match) {
+      return rule.targetQuestionId;
+    }
+  }
+  
+  return null;
+}
+
+// ========== 用户 API ==========
+
+// 首页
+app.get("/", (req, res) => {
+  res.sendFile(path.join(__dirname, "public", "index.html"));
+});
+// 注册 - 确保正确加密
+app.post("/api/register", async (req, res) => {
+  try {
+    console.log("收到注册请求:", req.body);
+    
+    const { username, password, email } = req.body;
+    
+    // 参数校验
+    if (!username || !password) {
+      return res.status(400).json({ error: "用户名和密码不能为空" });
+    }
+    
+    if (username.length < 3) {
+      return res.status(400).json({ error: "用户名至少3个字符" });
+    }
+    
+    if (password.length < 6) {
+      return res.status(400).json({ error: "密码至少6个字符" });
+    }
+    
+    // 检查用户是否已存在
+    const existingUser = await User.findOne({ username });
+    if (existingUser) {
+      return res.status(400).json({ error: "用户名已存在" });
+    }
+    
+    // 🔥 正确加密密码
+    const bcrypt = require("bcryptjs");
+    const salt = await bcrypt.genSalt(10);
+    const hashedPassword = await bcrypt.hash(password, salt);
+    
+    console.log("原始密码:", password);
+    console.log("加密后密码:", hashedPassword);
+    
+    // 创建新用户（使用加密后的密码）
+    const user = new User({ 
+      username: username.trim(), 
+      password: hashedPassword,  // 这里必须是加密后的密码
+      email: email || ""
+    });
+    
+    await user.save();
+    
+    console.log("用户创建成功:", user.username);
+    console.log("数据库中存储的密码:", user.password);
+    
+    // 生成 token
+    const token = jwt.sign(
+      { userId: user._id, username: user.username }, 
+      JWT_SECRET, 
+      { expiresIn: "7d" }
+    );
+    
+    res.json({
+      success: true,
+      message: "注册成功",
+      token,
+      user: { 
+        id: user._id, 
+        username: user.username, 
+        email: user.email 
+      }
+    });
+  } catch (err) {
+    console.error("注册错误:", err);
+    res.status(500).json({ 
+      success: false,
+      error: err.message
+    });
   }
 });
 
-// 获取用户创建的问卷（前端加载下拉）
-app.get("/my-surveys", async (req, res) => {
+// 获取当前用户信息
+app.get("/api/me", authMiddleware, async (req, res) => {
+  res.json({ success: true, user: req.user });
+});
+
+// ========== 问卷 API ==========
+
+// 获取我的问卷列表
+app.get("/api/my-surveys", authMiddleware, async (req, res) => {
   try {
-    const surveys = await Survey.find({});
-    res.json(surveys);
+    const surveys = await Survey.find({ creatorId: req.user._id }).sort({ createdAt: -1 });
+    res.json({ success: true, surveys });
   } catch (err) {
+    console.error("获取问卷列表错误:", err);
+    res.status(500).json({ error: err.message });
+  }
+});
+// 登录 - 使用 bcrypt 验证
+app.post("/api/login", async (req, res) => {
+  try {
+    console.log("收到登录请求:", req.body.username);
+    
+    const { username, password } = req.body;
+    
+    if (!username || !password) {
+      return res.status(400).json({ error: "用户名和密码不能为空" });
+    }
+    
+    // 查找用户
+    const user = await User.findOne({ username });
+    if (!user) {
+      return res.status(401).json({ error: "用户名或密码错误" });
+    }
+    
+    console.log("用户密码:", user.password);
+    console.log("输入的密码:", password);
+    
+    // 🔥 使用 bcrypt 验证密码
+    const bcrypt = require("bcryptjs");
+    const isValid = await bcrypt.compare(password, user.password);
+    
+    console.log("密码验证结果:", isValid);
+    
+    if (!isValid) {
+      return res.status(401).json({ error: "用户名或密码错误" });
+    }
+    
+    // 生成 token
+    const token = jwt.sign(
+      { userId: user._id, username: user.username }, 
+      JWT_SECRET, 
+      { expiresIn: "7d" }
+    );
+    
+    res.json({
+      success: true,
+      message: "登录成功",
+      token,
+      user: { id: user._id, username: user.username, email: user.email }
+    });
+  } catch (err) {
+    console.error("登录错误:", err);
     res.status(500).json({ error: err.message });
   }
 });
 
 // 创建问卷
-app.post("/create-survey", async (req, res) => {
+app.post("/api/create-survey", authMiddleware, async (req, res) => {
   try {
-    const { surveyId, title, description, allowAnonymous } = req.body;
+    const { title, description, allowAnonymous, allowMultipleSubmit, deadline } = req.body;
+    
+    if (!title) {
+      return res.status(400).json({ error: "问卷标题不能为空" });
+    }
+    
+    const surveyId = `SURVEY_${Date.now()}_${Math.random().toString(36).substr(2, 8)}`;
+    
     const survey = new Survey({
       surveyId,
       title,
-      description,
-      allow_multiple_submit: true,
-      creatorId: null,
-      status: "draft",
-      allowAnonymous,
-      deadline: new Date(Date.now() + 7*24*60*60*1000), // 一周后截止
+      description: description || "",
+      allowAnonymous: allowAnonymous || false,
+      allowMultipleSubmit: allowMultipleSubmit !== false,
+      status: "published",
+      deadline: deadline || null,
+      creatorId: req.user._id,
       questions: []
     });
+    
     await survey.save();
-    res.json({ message: "问卷创建成功 ✅", survey });
+    
+    // 更新用户的问卷列表
+    req.user.survey_ids.push(survey._id);
+    await req.user.save();
+    
+    res.json({ success: true, message: "问卷创建成功", survey });
   } catch (err) {
+    console.error("创建问卷错误:", err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// 获取问卷（公开）
+app.get("/api/survey/:surveyId", async (req, res) => {
+  try {
+    const survey = await Survey.findOne({ surveyId: req.params.surveyId });
+    if (!survey) {
+      return res.status(404).json({ error: "问卷不存在" });
+    }
+    
+    // 检查截止时间
+    if (survey.deadline && new Date() > survey.deadline) {
+      return res.status(403).json({ error: "问卷已截止" });
+    }
+    
+    if (survey.status !== "published") {
+      return res.status(403).json({ error: "问卷未发布" });
+    }
+    
+    // 返回问卷
+    res.json({
+      success: true,
+      survey: {
+        surveyId: survey.surveyId,
+        title: survey.title,
+        description: survey.description,
+        allowAnonymous: survey.allowAnonymous,
+        deadline: survey.deadline,
+        questions: survey.questions.map(q => ({
+          questionId: q.questionId,
+          title: q.title || q.questionId,
+          type: q.type,
+          required: q.required,
+          config: q.config
+        }))
+      }
+    });
+  } catch (err) {
+    console.error("获取问卷错误:", err);
     res.status(500).json({ error: err.message });
   }
 });
 
 // 添加题目
-app.post("/add-question", async (req, res) => {
+app.post("/api/add-question", authMiddleware, async (req, res) => {
   try {
-    const { surveyId, questionId, type, required, config } = req.body;
-    const survey = await Survey.findOne({ surveyId });
-    if (!survey) return res.status(404).send("问卷不存在 ❌");
-
+    const { surveyId, questionId, title, type, required, config } = req.body;
+    
+    const survey = await Survey.findOne({ surveyId, creatorId: req.user._id });
+    if (!survey) {
+      return res.status(404).json({ error: "问卷不存在或无权限" });
+    }
+    
+    // 检查 questionId 是否重复
+    if (survey.questions.some(q => q.questionId === questionId)) {
+      return res.status(400).json({ error: "题目ID已存在" });
+    }
+    
     survey.questions.push({
       questionId,
+      title: title || questionId,
       type,
-      required,
-      config,
-      logic: []
+      required: required || false,
+      order: survey.questions.length,
+      config: config || {}
     });
-
+    
     await survey.save();
-    res.json({ message: "题目添加成功 ✅" });
+    res.json({ success: true, message: "题目添加成功", question: survey.questions[survey.questions.length - 1] });
   } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// 获取问卷详情
-app.get("/get-survey", async (req, res) => {
-  try {
-    const { surveyId } = req.query;
-    const survey = await Survey.findOne({ surveyId });
-    if (!survey) return res.status(404).send("问卷不存在 ❌");
-    res.json(survey);
-  } catch (err) {
+    console.error("添加题目错误:", err);
     res.status(500).json({ error: err.message });
   }
 });
 
 // 添加跳转逻辑
-app.post("/add-logic", async (req, res) => {
+app.post("/api/add-logic", authMiddleware, async (req, res) => {
   try {
-    const { surveyId, sourceQuestionId, targetQuestionId, optionValue } = req.body;
-    const survey = await Survey.findOne({ surveyId });
-    if (!survey) return res.status(404).send("问卷不存在 ❌");
-
-    const logic = {
-      sourceQuestionId,
-      conditions: [
-        {
-          type: "option_selected",
-          optionValue
-        }
-      ],
-      operator: "equals",
+    const { surveyId, sourceQuestionId, conditions, targetQuestionId, priority } = req.body;
+    
+    const survey = await Survey.findOne({ surveyId, creatorId: req.user._id });
+    if (!survey) {
+      return res.status(404).json({ error: "问卷不存在或无权限" });
+    }
+    
+    const question = survey.questions.find(q => q.questionId === sourceQuestionId);
+    if (!question) {
+      return res.status(404).json({ error: "源题目不存在" });
+    }
+    
+    // 检查目标题目是否存在
+    if (!survey.questions.some(q => q.questionId === targetQuestionId)) {
+      return res.status(404).json({ error: "目标题目不存在" });
+    }
+    
+    question.logic = question.logic || [];
+    question.logic.push({
+      conditions,
       targetQuestionId,
-      priority: 1
-    };
-
-    survey.questions.forEach(q => {
-      if (q.questionId === sourceQuestionId) {
-        q.logic.push(logic);
-      }
+      priority: priority || question.logic.length + 1
     });
-
+    
     await survey.save();
-    res.json({ message: "跳转逻辑添加成功 ✅" });
+    res.json({ success: true, message: "跳转逻辑添加成功" });
   } catch (err) {
+    console.error("添加跳转逻辑错误:", err);
     res.status(500).json({ error: err.message });
   }
 });
 
 // 提交答卷
-app.post("/submit-response", async (req, res) => {
+app.post("/api/submit-response", async (req, res) => {
   try {
-    const { surveyId, respondentId, respondentName, isAnonymous, answers } = req.body;
+    const { surveyId, answers, respondentName, isAnonymous } = req.body;
+    
+    // 查找问卷
     const survey = await Survey.findOne({ surveyId });
-    if (!survey) return res.status(404).send("问卷不存在 ❌");
+    if (!survey) {
+      return res.status(404).json({ error: "问卷不存在" });
+    }
+    
+    // 检查截止时间
+    if (survey.deadline && new Date() > survey.deadline) {
+      return res.status(403).json({ error: "问卷已截止" });
+    }
+    
+    // 校验所有答案
+    for (const q of survey.questions) {
+      const answer = answers?.find(a => a.questionId === q.questionId);
+      const validationError = validateAnswer(q, answer?.value);
+      if (validationError) {
+        return res.status(400).json({ error: `题目 ${q.title || q.questionId}: ${validationError}` });
+      }
+    }
+    
+    // 保存答卷
+    const response = new Response({
+      surveyId: survey._id,
+      respondentName: isAnonymous ? null : (respondentName || "匿名用户"),
+      isAnonymous: isAnonymous || false,
+      answers: answers?.map(a => ({ questionId: a.questionId, value: a.value })) || [],
+      ipAddress: req.ip,
+      userAgent: req.headers["user-agent"]
+    });
+    
+    await response.save();
+    
+    res.json({ success: true, message: "提交成功", responseId: response.responseId });
+  } catch (err) {
+    console.error("提交答卷错误:", err);
+    res.status(500).json({ error: err.message });
+  }
+});
 
-    // 必填题校验
-    for (let q of survey.questions) {
-      if (q.required) {
-        const ans = answers.find(a => a.questionId === q.questionId);
-        if (!ans || ans.value === "" || ans.value == null) {
-          return res.status(400).send(`题目 ${q.questionId} 是必填 ❌`);
+// 获取统计结果
+app.get("/api/survey-stats/:surveyId", authMiddleware, async (req, res) => {
+  try {
+    const survey = await Survey.findOne({ surveyId: req.params.surveyId, creatorId: req.user._id });
+    if (!survey) {
+      return res.status(404).json({ error: "问卷不存在或无权限" });
+    }
+    
+    const responses = await Response.find({ surveyId: survey._id });
+    
+    // 构建统计结果
+    const stats = {
+      totalResponses: responses.length,
+      questions: {}
+    };
+    
+    // 初始化统计结构
+    for (const q of survey.questions) {
+      stats.questions[q.questionId] = {
+        title: q.title || q.questionId,
+        type: q.type,
+        total: 0
+      };
+      
+      if (q.type === "single_choice" && q.config?.options) {
+        stats.questions[q.questionId].options = {};
+        q.config.options.forEach(opt => {
+          stats.questions[q.questionId].options[opt.value] = { label: opt.label, count: 0 };
+        });
+      }
+      else if (q.type === "multi_choice" && q.config?.options) {
+        stats.questions[q.questionId].options = {};
+        q.config.options.forEach(opt => {
+          stats.questions[q.questionId].options[opt.value] = { label: opt.label, count: 0 };
+        });
+        stats.questions[q.questionId].totalSelections = 0;
+      }
+      else if (q.type === "text") {
+        stats.questions[q.questionId].answers = [];
+      }
+      else if (q.type === "number") {
+        stats.questions[q.questionId].values = [];
+        stats.questions[q.questionId].sum = 0;
+        stats.questions[q.questionId].avg = 0;
+        stats.questions[q.questionId].min = null;
+        stats.questions[q.questionId].max = null;
+      }
+    }
+    
+    // 统计答卷数据
+    for (const r of responses) {
+      for (const a of r.answers) {
+        const qStat = stats.questions[a.questionId];
+        if (!qStat) continue;
+        
+        qStat.total++;
+        
+        if (qStat.type === "single_choice") {
+          if (qStat.options[a.value]) {
+            qStat.options[a.value].count++;
+          }
+        }
+        else if (qStat.type === "multi_choice" && Array.isArray(a.value)) {
+          for (const v of a.value) {
+            if (qStat.options[v]) {
+              qStat.options[v].count++;
+              qStat.totalSelections = (qStat.totalSelections || 0) + 1;
+            }
+          }
+        }
+        else if (qStat.type === "text") {
+          qStat.answers.push(a.value);
+        }
+        else if (qStat.type === "number") {
+          const num = Number(a.value);
+          if (!isNaN(num)) {
+            qStat.values.push(num);
+            qStat.sum += num;
+            if (qStat.min === null || num < qStat.min) qStat.min = num;
+            if (qStat.max === null || num > qStat.max) qStat.max = num;
+          }
         }
       }
     }
-
-    const response = new Response({
-      surveyId: survey._id,
-      responseId: new mongoose.Types.ObjectId(),
-      respondentId: respondentId || null,
-      respondentName: respondentName || null,
-      isAnonymous: isAnonymous || false,
-      answers
-    });
-
-    await response.save();
-    res.json({ message: "答卷提交成功 ✅" });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// 获取问卷统计
-app.get("/get-survey-stats", async (req, res) => {
-  try {
-    const { surveyId } = req.query;
-    const survey = await Survey.findOne({ surveyId });
-    if (!survey) return res.status(404).send("问卷不存在 ❌");
-
-    const responses = await Response.find({ surveyId: survey._id });
-
-    const stats = {};
-    survey.questions.forEach(q => {
-      stats[q.questionId] = {};
-      if (q.type === "single_choice" || q.type === "multi_choice") {
-        q.config.options.forEach(opt => stats[q.questionId][opt.value] = 0);
+    
+    // 计算数字题平均值
+    for (const q of survey.questions) {
+      const qStat = stats.questions[q.questionId];
+      if (qStat?.type === "number" && qStat.values.length > 0) {
+        qStat.avg = (qStat.sum / qStat.values.length).toFixed(2);
       }
-    });
-
-    responses.forEach(r => {
-      r.answers.forEach(a => {
-        if (Array.isArray(a.value)) {
-          a.value.forEach(v => stats[a.questionId][v]++);
-        } else {
-          if (stats[a.questionId] && stats[a.questionId][a.value] !== undefined) stats[a.questionId][a.value]++;
-        }
-      });
-    });
-
-    res.json(stats);
+    }
+    
+    res.json({ success: true, stats });
   } catch (err) {
+    console.error("统计错误:", err);
     res.status(500).json({ error: err.message });
   }
 });
 
-app.listen(3000, () => {
-  console.log("服务器运行在 http://localhost:3000");
+// 测试跳转逻辑
+app.post("/api/test-jump", async (req, res) => {
+  try {
+    const { surveyId, currentQuestionId, answer } = req.body;
+    const survey = await Survey.findOne({ surveyId });
+    if (!survey) {
+      return res.status(404).json({ error: "问卷不存在" });
+    }
+    
+    const nextId = await getNextQuestionId(survey, currentQuestionId, answer);
+    res.json({ success: true, nextQuestionId: nextId });
+  } catch (err) {
+    console.error("跳转测试错误:", err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// 测试接口 - 验证注册是否工作
+app.get("/api/test-register", async (req, res) => {
+  try {
+    const { username, password } = req.query;
+    
+    // 删除已存在的测试用户
+    await User.deleteOne({ username: username || "testuser" });
+    
+    const user = new User({ 
+      username: username || "testuser", 
+      password: password || "123456" 
+    });
+    await user.save();
+    
+    res.json({ 
+      success: true, 
+      message: "测试用户创建成功", 
+      user: { username: user.username, passwordHashed: user.password.substring(0, 20) + "..." }
+    });
+  } catch (err) {
+    console.error("测试注册错误:", err);
+    res.json({ success: false, error: err.message });
+  }
+});
+
+// 启动服务器
+const PORT = 3000;
+app.listen(PORT, () => {
+  console.log(`\n🚀 服务器运行在 http://localhost:${PORT}`);
+  console.log(`📝 前端页面: http://localhost:${PORT}`);
+  console.log(`🔌 API 接口: http://localhost:${PORT}/api`);
+  console.log(`\n可用接口:`);
+  console.log(`  POST   /api/register     - 注册`);
+  console.log(`  POST   /api/login        - 登录`);
+  console.log(`  GET    /api/me           - 获取用户信息（需token）`);
+  console.log(`  GET    /api/my-surveys   - 我的问卷（需token）`);
+  console.log(`  POST   /api/create-survey - 创建问卷（需token）`);
+  console.log(`  GET    /api/survey/:id   - 获取问卷（公开）`);
+  console.log(`  POST   /api/submit-response - 提交答卷（公开）`);
+  console.log(`  GET    /api/survey-stats/:id - 统计（需token）\n`);
 });

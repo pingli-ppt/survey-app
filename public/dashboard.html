@@ -1,0 +1,552 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>控制台 - 问卷系统</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #f5f5f5;
+            min-height: 100vh;
+        }
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 20px 30px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        .header h1 {
+            font-size: 24px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .user-info {
+            display: flex;
+            align-items: center;
+            gap: 20px;
+        }
+        .username {
+            font-size: 16px;
+            font-weight: 500;
+        }
+        .logout-btn {
+            background: rgba(255,255,255,0.2);
+            border: none;
+            padding: 8px 20px;
+            border-radius: 8px;
+            color: white;
+            cursor: pointer;
+            font-size: 14px;
+            transition: all 0.3s;
+        }
+        .logout-btn:hover {
+            background: rgba(255,255,255,0.3);
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 30px 20px;
+        }
+        .actions-bar {
+            margin-bottom: 30px;
+            display: flex;
+            gap: 15px;
+            flex-wrap: wrap;
+        }
+        .btn {
+            padding: 12px 24px;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 500;
+            transition: all 0.3s;
+        }
+        .btn-primary {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(102,126,234,0.4);
+        }
+        .btn-secondary {
+            background: #6c757d;
+            color: white;
+        }
+        .btn-secondary:hover {
+            background: #5a6268;
+        }
+        .stats-summary {
+            background: white;
+            border-radius: 12px;
+            padding: 20px;
+            margin-bottom: 30px;
+            display: flex;
+            justify-content: space-around;
+            text-align: center;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        .stat-card {
+            flex: 1;
+        }
+        .stat-number {
+            font-size: 32px;
+            font-weight: bold;
+            color: #667eea;
+        }
+        .stat-label {
+            color: #666;
+            margin-top: 5px;
+            font-size: 14px;
+        }
+        .survey-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
+            gap: 20px;
+        }
+        .survey-card {
+            background: white;
+            border-radius: 12px;
+            padding: 20px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            transition: all 0.3s;
+            position: relative;
+        }
+        .survey-card:hover {
+            transform: translateY(-4px);
+            box-shadow: 0 8px 25px rgba(0,0,0,0.15);
+        }
+        .survey-status {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 500;
+        }
+        .status-published {
+            background: #d4edda;
+            color: #155724;
+        }
+        .status-draft {
+            background: #fff3cd;
+            color: #856404;
+        }
+        .status-closed {
+            background: #f8d7da;
+            color: #721c24;
+        }
+        .survey-title {
+            font-size: 18px;
+            font-weight: 600;
+            color: #333;
+            margin-bottom: 10px;
+            padding-right: 80px;
+        }
+        .survey-description {
+            color: #666;
+            font-size: 14px;
+            margin-bottom: 15px;
+            line-height: 1.5;
+        }
+        .survey-meta {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 15px;
+            margin-bottom: 15px;
+            font-size: 12px;
+            color: #999;
+            padding-bottom: 15px;
+            border-bottom: 1px solid #eee;
+        }
+        .survey-id-box {
+            background: #f8f9fa;
+            padding: 10px;
+            border-radius: 6px;
+            margin-bottom: 15px;
+            font-family: monospace;
+            font-size: 12px;
+            word-break: break-all;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .survey-id-box code {
+            color: #667eea;
+            background: #e9ecef;
+            padding: 4px 8px;
+            border-radius: 4px;
+        }
+        .copy-id-btn {
+            background: #e9ecef;
+            border: none;
+            padding: 4px 12px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 12px;
+        }
+        .copy-id-btn:hover {
+            background: #dee2e6;
+        }
+        .survey-actions {
+            display: flex;
+            gap: 10px;
+            margin-top: 15px;
+        }
+        .survey-actions button {
+            flex: 1;
+            padding: 8px 12px;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 13px;
+            font-weight: 500;
+            transition: all 0.2s;
+        }
+        .btn-link {
+            background: #e9ecef;
+            color: #495057;
+        }
+        .btn-link:hover {
+            background: #dee2e6;
+        }
+        .btn-stats {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+        .btn-stats:hover {
+            opacity: 0.9;
+        }
+        .btn-fill {
+            background: #28a745;
+            color: white;
+        }
+        .btn-fill:hover {
+            background: #218838;
+        }
+        .empty-state {
+            text-align: center;
+            padding: 60px 20px;
+            background: white;
+            border-radius: 12px;
+        }
+        .empty-state-icon {
+            font-size: 64px;
+            margin-bottom: 20px;
+        }
+        .empty-state h3 {
+            color: #333;
+            margin-bottom: 10px;
+        }
+        .empty-state p {
+            color: #999;
+            margin-bottom: 20px;
+        }
+        .loading {
+            text-align: center;
+            padding: 50px;
+            color: #999;
+        }
+        .toast {
+            position: fixed;
+            bottom: 30px;
+            right: 30px;
+            background: #333;
+            color: white;
+            padding: 12px 24px;
+            border-radius: 8px;
+            z-index: 1000;
+            animation: fadeInOut 2s ease;
+        }
+        @keyframes fadeInOut {
+            0% { opacity: 0; transform: translateY(20px); }
+            15% { opacity: 1; transform: translateY(0); }
+            85% { opacity: 1; transform: translateY(0); }
+            100% { opacity: 0; transform: translateY(20px); }
+        }
+        @media (max-width: 768px) {
+            .survey-grid {
+                grid-template-columns: 1fr;
+            }
+            .stats-summary {
+                flex-direction: column;
+                gap: 15px;
+            }
+            .header {
+                flex-direction: column;
+                gap: 15px;
+                text-align: center;
+            }
+            .survey-actions {
+                flex-wrap: wrap;
+            }
+            .survey-actions button {
+                min-width: 100px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>
+            📋 我的问卷
+        </h1>
+        <div class="user-info">
+            <span class="username" id="username">用户</span>
+            <button class="logout-btn" onclick="logout()">退出登录</button>
+        </div>
+    </div>
+    
+    <div class="container">
+        <div class="actions-bar">
+            <button class="btn btn-primary" onclick="location.href='create.html'">+ 创建新问卷</button>
+            <button class="btn btn-secondary" onclick="loadSurveys()">🔄 刷新列表</button>
+        </div>
+        
+        <div id="statsSummary" style="display: none;"></div>
+        <div id="surveyList">
+            <div class="loading">加载中...</div>
+        </div>
+    </div>
+    
+    <script>
+        const API_BASE = '/api';
+        
+        function getToken() {
+            return localStorage.getItem('token');
+        }
+        
+        function showToast(message, isError = false) {
+            const toast = document.createElement('div');
+            toast.className = 'toast';
+            toast.style.background = isError ? '#dc3545' : '#28a745';
+            toast.textContent = message;
+            document.body.appendChild(toast);
+            setTimeout(() => {
+                toast.remove();
+            }, 2000);
+        }
+        
+        async function loadSurveys() {
+            const token = getToken();
+            if (!token) {
+                window.location.href = '/';
+                return;
+            }
+            
+            try {
+                const res = await fetch(`${API_BASE}/my-surveys`, {
+                    headers: { 
+                        'Authorization': `Bearer ${token}`,
+                        'Content-Type': 'application/json'
+                    }
+                });
+                
+                if (res.status === 401) {
+                    localStorage.removeItem('token');
+                    localStorage.removeItem('user');
+                    window.location.href = '/';
+                    return;
+                }
+                
+                const data = await res.json();
+                
+                if (data.success) {
+                    renderStatsSummary(data.surveys);
+                    renderSurveys(data.surveys);
+                } else {
+                    throw new Error(data.error || '加载失败');
+                }
+            } catch (err) {
+                console.error('加载问卷错误:', err);
+                document.getElementById('surveyList').innerHTML = `
+                    <div class="empty-state">
+                        <div class="empty-state-icon">⚠️</div>
+                        <h3>加载失败</h3>
+                        <p>${err.message}</p>
+                        <button class="btn btn-primary" onclick="loadSurveys()">重试</button>
+                    </div>
+                `;
+                showToast('加载失败: ' + err.message, true);
+            }
+        }
+        
+        function renderStatsSummary(surveys) {
+            const statsDiv = document.getElementById('statsSummary');
+            if (!surveys || surveys.length === 0) {
+                statsDiv.style.display = 'none';
+                return;
+            }
+            
+            const publishedCount = surveys.filter(s => s.status === 'published').length;
+            const draftCount = surveys.filter(s => s.status === 'draft').length;
+            const closedCount = surveys.filter(s => s.status === 'closed').length;
+            
+            statsDiv.style.display = 'block';
+            statsDiv.innerHTML = `
+                <div class="stats-summary">
+                    <div class="stat-card">
+                        <div class="stat-number">${surveys.length}</div>
+                        <div class="stat-label">总问卷数</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-number">${publishedCount}</div>
+                        <div class="stat-label">已发布</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-number">${draftCount}</div>
+                        <div class="stat-label">草稿</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-number">${closedCount}</div>
+                        <div class="stat-label">已关闭</div>
+                    </div>
+                </div>
+            `;
+        }
+        
+        function renderSurveys(surveys) {
+            const container = document.getElementById('surveyList');
+            
+            if (!surveys || surveys.length === 0) {
+                container.innerHTML = `
+                    <div class="empty-state">
+                        <div class="empty-state-icon">📭</div>
+                        <h3>暂无问卷</h3>
+                        <p>点击上方按钮创建你的第一个问卷吧！</p>
+                        <button class="btn btn-primary" onclick="location.href='create.html'">+ 创建问卷</button>
+                    </div>
+                `;
+                return;
+            }
+            
+            container.innerHTML = `
+                <div class="survey-grid">
+                    ${surveys.map(survey => `
+                        <div class="survey-card">
+                            <div class="survey-status ${getStatusClass(survey.status)}">
+                                ${getStatusText(survey.status)}
+                            </div>
+                            <div class="survey-title">${escapeHtml(survey.title)}</div>
+                            <div class="survey-description">${escapeHtml(survey.description || '暂无描述')}</div>
+                            <div class="survey-meta">
+                                <span>📅 ${formatDate(survey.createdAt)}</span>
+                                <span>📊 ${survey.questions?.length || 0} 道题目</span>
+                                ${survey.deadline ? `<span>⏰ 截止: ${formatDate(survey.deadline)}</span>` : ''}
+                            </div>
+                            <div class="survey-id-box">
+                                <code>${survey.surveyId}</code>
+                                <button class="copy-id-btn" onclick="copySurveyId('${survey.surveyId}')">复制ID</button>
+                            </div>
+                            <div class="survey-actions">
+                                <button class="btn-fill" onclick="fillSurvey('${survey.surveyId}')">📝 填写</button>
+                                <button class="btn-stats" onclick="viewStats('${survey.surveyId}')">📊 统计</button>
+                                <button class="btn-link" onclick="copyLink('${survey.surveyId}')">🔗 复制链接</button>
+                            </div>
+                        </div>
+                    `).join('')}
+                </div>
+            `;
+        }
+        
+        function getStatusClass(status) {
+            switch(status) {
+                case 'published': return 'status-published';
+                case 'draft': return 'status-draft';
+                case 'closed': return 'status-closed';
+                default: return 'status-draft';
+            }
+        }
+        
+        function getStatusText(status) {
+            switch(status) {
+                case 'published': return '✅ 已发布';
+                case 'draft': return '📝 草稿';
+                case 'closed': return '🔒 已关闭';
+                default: return '📝 草稿';
+            }
+        }
+        
+        function formatDate(dateStr) {
+            if (!dateStr) return '';
+            const date = new Date(dateStr);
+            return `${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,'0')}-${String(date.getDate()).padStart(2,'0')}`;
+        }
+        
+        function escapeHtml(str) {
+            if (!str) return '';
+            return String(str).replace(/[&<>]/g, function(m) {
+                if (m === '&') return '&amp;';
+                if (m === '<') return '&lt;';
+                if (m === '>') return '&gt;';
+                return m;
+            });
+        }
+        
+        function copySurveyId(surveyId) {
+            navigator.clipboard.writeText(surveyId).then(() => {
+                showToast('✅ 问卷ID已复制');
+            }).catch(() => {
+                showToast('❌ 复制失败，请手动复制', true);
+            });
+        }
+        
+        function copyLink(surveyId) {
+            const url = `${window.location.origin}/survey.html?surveyId=${surveyId}`;
+            navigator.clipboard.writeText(url).then(() => {
+                showToast('✅ 问卷链接已复制');
+            }).catch(() => {
+                showToast('❌ 复制失败，请手动复制', true);
+            });
+        }
+        
+        function fillSurvey(surveyId) {
+            window.location.href = `/survey.html?surveyId=${surveyId}`;
+        }
+        
+        function viewStats(surveyId) {
+            console.log('查看统计，问卷ID:', surveyId);
+            if (!surveyId) {
+                showToast('❌ 问卷ID无效', true);
+                return;
+            }
+            window.location.href = `/stats.html?surveyId=${encodeURIComponent(surveyId)}`;
+        }
+        
+        function logout() {
+            localStorage.removeItem('token');
+            localStorage.removeItem('user');
+            showToast('已退出登录');
+            setTimeout(() => {
+                window.location.href = '/';
+            }, 500);
+        }
+        
+        // 显示用户名
+        const user = JSON.parse(localStorage.getItem('user') || '{}');
+        document.getElementById('username').textContent = user.username || '用户';
+        
+        // 检查登录状态
+        if (!getToken()) {
+            showToast('请先登录', true);
+            setTimeout(() => {
+                window.location.href = '/';
+            }, 1000);
+        } else {
+            loadSurveys();
+        }
+    </script>
+</body>
+</html>
