@@ -1,62 +1,715 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
-<meta charset="UTF-8">
-<title>问卷系统</title>
-<style>
-body { font-family: Arial; margin: 20px; }
-label { display: block; margin-top: 10px; }
-input, select, button { margin-top: 5px; }
-.optionContainer { margin-left: 20px; }
-.questionBlock { border: 1px solid #ccc; padding: 10px; margin: 10px 0; }
-#questionArea { margin-top: 20px; }
-#surveyStats { margin-top: 20px; border-top: 1px solid #000; padding-top: 10px; }
-</style>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>填写问卷 - 问卷系统</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 40px 20px;
+        }
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+        }
+        .survey-header {
+            background: white;
+            border-radius: 16px;
+            padding: 30px;
+            margin-bottom: 20px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.1);
+            text-align: center;
+        }
+        .survey-title {
+            font-size: 28px;
+            font-weight: bold;
+            color: #333;
+            margin-bottom: 10px;
+        }
+        .survey-desc {
+            color: #666;
+            line-height: 1.6;
+        }
+        .survey-meta {
+            margin-top: 15px;
+            padding-top: 15px;
+            border-top: 1px solid #eee;
+            font-size: 13px;
+            color: #999;
+        }
+        .question-card {
+            background: white;
+            border-radius: 16px;
+            padding: 25px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+        .question-card:hover {
+            box-shadow: 0 5px 20px rgba(0,0,0,0.15);
+        }
+        .question-header {
+            display: flex;
+            align-items: baseline;
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+        .question-title {
+            font-size: 18px;
+            font-weight: 600;
+            color: #333;
+        }
+        .required-badge {
+            color: #dc3545;
+            font-size: 14px;
+            margin-left: 5px;
+        }
+        .question-type-badge {
+            background: #e9ecef;
+            padding: 2px 8px;
+            border-radius: 20px;
+            font-size: 11px;
+            color: #666;
+        }
+        .options-group {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+        .option-item {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 10px;
+            border-radius: 8px;
+            transition: background 0.2s;
+            cursor: pointer;
+        }
+        .option-item:hover {
+            background: #f8f9fa;
+        }
+        .option-item input[type="radio"],
+        .option-item input[type="checkbox"] {
+            width: 18px;
+            height: 18px;
+            cursor: pointer;
+        }
+        .option-item label {
+            flex: 1;
+            cursor: pointer;
+            font-size: 15px;
+            color: #333;
+        }
+        .text-input {
+            width: 100%;
+            padding: 12px;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            font-size: 15px;
+            font-family: inherit;
+            transition: border-color 0.2s;
+        }
+        .text-input:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+        .number-input {
+            width: 200px;
+            padding: 12px;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            font-size: 15px;
+        }
+        .number-input:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+        .error-msg {
+            color: #dc3545;
+            font-size: 13px;
+            margin-top: 8px;
+            display: none;
+        }
+        .question-card.error .error-msg {
+            display: block;
+        }
+        .question-card.error {
+            border-left: 4px solid #dc3545;
+        }
+        .progress-bar {
+            background: white;
+            border-radius: 30px;
+            padding: 5px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        .progress-fill {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            height: 10px;
+            border-radius: 30px;
+            transition: width 0.3s ease;
+            width: 0%;
+        }
+        .progress-text {
+            text-align: center;
+            font-size: 13px;
+            color: #666;
+            margin-top: 8px;
+        }
+        .action-buttons {
+            display: flex;
+            justify-content: space-between;
+            gap: 15px;
+            margin-top: 20px;
+        }
+        .btn {
+            padding: 12px 24px;
+            border: none;
+            border-radius: 8px;
+            font-size: 16px;
+            cursor: pointer;
+            transition: opacity 0.2s;
+        }
+        .btn:hover {
+            opacity: 0.9;
+        }
+        .btn-prev {
+            background: #6c757d;
+            color: white;
+        }
+        .btn-next {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+        .btn-submit {
+            background: #28a745;
+            color: white;
+        }
+        .loading {
+            text-align: center;
+            padding: 60px;
+            background: white;
+            border-radius: 16px;
+            color: #999;
+        }
+        .error-page {
+            background: white;
+            border-radius: 16px;
+            padding: 40px;
+            text-align: center;
+        }
+        .error-page h2 {
+            color: #dc3545;
+            margin-bottom: 15px;
+        }
+        .success-page {
+            background: white;
+            border-radius: 16px;
+            padding: 50px;
+            text-align: center;
+        }
+        .success-icon {
+            font-size: 64px;
+            margin-bottom: 20px;
+        }
+        .success-page h2 {
+            color: #28a745;
+            margin-bottom: 15px;
+        }
+        .home-link {
+            display: inline-block;
+            margin-top: 20px;
+            padding: 10px 20px;
+            background: #667eea;
+            color: white;
+            text-decoration: none;
+            border-radius: 8px;
+        }
+        footer {
+            text-align: center;
+            margin-top: 30px;
+            color: rgba(255,255,255,0.7);
+            font-size: 13px;
+        }
+        @media (max-width: 600px) {
+            body {
+                padding: 20px 15px;
+            }
+            .survey-title {
+                font-size: 22px;
+            }
+            .question-card {
+                padding: 18px;
+            }
+            .btn {
+                padding: 10px 18px;
+                font-size: 14px;
+            }
+        }
+    </style>
 </head>
 <body>
+    <div class="container" id="app">
+        <div class="loading">加载中...</div>
+    </div>
 
-<h2>添加题目 & 配置跳转逻辑</h2>
-
-<label>选择问卷：
-  <select id="selectSurvey"></select>
-</label>
-
-<label>题目ID：
-  <input type="text" id="questionId" value="q1">
-</label>
-
-<label>题型：
-  <select id="questionType">
-    <option value="single_choice">单选</option>
-    <option value="multi_choice">多选</option>
-    <option value="text">文本</option>
-    <option value="number">数字</option>
-  </select>
-</label>
-
-<label>必填：
-  <input type="checkbox" id="required" checked>
-</label>
-
-<div id="optionsContainer" class="optionContainer"></div>
-<div id="validationContainer" class="optionContainer"></div>
-
-<button onclick="addQuestion()">添加题目</button>
-<div id="addQuestionResult"></div>
-
-<hr>
-
-<h2>填写问卷</h2>
-<div id="questionArea"></div>
-<button onclick="submitResponse()">提交答卷</button>
-<div id="submitResult"></div>
-
-<hr>
-
-<h2>统计结果</h2>
-<button onclick="fetchStats()">查看统计</button>
-<div id="surveyStats"></div>
-
-<script src="main.js"></script>
+    <script>
+        const API_BASE = '/api';
+        
+        function getUrlParams() {
+            const params = {};
+            const query = window.location.search.substring(1);
+            if (query) {
+                const pairs = query.split('&');
+                for (const pair of pairs) {
+                    const [key, value] = pair.split('=');
+                    if (key) params[decodeURIComponent(key)] = decodeURIComponent(value || '');
+                }
+            }
+            return params;
+        }
+        
+        let surveyData = null;
+        let currentIndex = 0;
+        let answers = {};
+        let errorStates = {};
+        
+        async function loadSurvey() {
+            const params = getUrlParams();
+            const surveyId = params.surveyId;
+            
+            if (!surveyId) {
+                renderError('缺少问卷ID，请从正确的链接进入');
+                return;
+            }
+            
+            try {
+                const res = await fetch(`${API_BASE}/survey/${surveyId}`);
+                const data = await res.json();
+                
+                if (!data.success) {
+                    throw new Error(data.error || '加载失败');
+                }
+                
+                surveyData = data.survey;
+                
+                // 初始化答案
+                surveyData.questions.forEach(q => {
+                    if (q.type === 'multi_choice') {
+                        answers[q.questionId] = [];
+                    } else {
+                        answers[q.questionId] = '';
+                    }
+                });
+                
+                renderQuestionnaire();
+            } catch (err) {
+                renderError(err.message);
+            }
+        }
+        
+        function renderQuestionnaire() {
+            if (!surveyData) return;
+            
+            const totalQuestions = surveyData.questions.length;
+            const currentQ = surveyData.questions[currentIndex];
+            const progress = ((currentIndex + 1) / totalQuestions) * 100;
+            
+            const html = `
+                <div class="survey-header">
+                    <h1 class="survey-title">${escapeHtml(surveyData.title)}</h1>
+                    <p class="survey-desc">${escapeHtml(surveyData.description || '感谢您参与本次调查')}</p>
+                    <div class="survey-meta">
+                        ${surveyData.deadline ? `⏰ 截止时间：${new Date(surveyData.deadline).toLocaleString()}` : '📝 请根据实际情况如实填写'}
+                    </div>
+                </div>
+                
+                <div class="progress-bar">
+                    <div class="progress-fill" style="width: ${progress}%"></div>
+                </div>
+                <div class="progress-text">第 ${currentIndex + 1} / ${totalQuestions} 题</div>
+                
+                ${renderQuestion(currentQ)}
+                
+                <div class="action-buttons">
+                    ${currentIndex > 0 ? '<button class="btn btn-prev" onclick="prevQuestion()">← 上一题</button>' : '<div></div>'}
+                    ${currentIndex < totalQuestions - 1 
+                        ? '<button class="btn btn-next" onclick="nextQuestion()">下一题 →</button>'
+                        : '<button class="btn btn-submit" onclick="submitSurvey()">✓ 提交问卷</button>'}
+                </div>
+            `;
+            
+            document.getElementById('app').innerHTML = html;
+            
+            // 恢复已填写的答案
+            restoreAnswer(currentQ);
+        }
+        
+        function renderQuestion(question) {
+            const errorClass = errorStates[question.questionId] ? 'error' : '';
+            const hasError = errorStates[question.questionId];
+            
+            let content = '';
+            
+            switch (question.type) {
+                case 'single_choice':
+                    content = renderSingleChoice(question);
+                    break;
+                case 'multi_choice':
+                    content = renderMultiChoice(question);
+                    break;
+                case 'text':
+                    content = renderText(question);
+                    break;
+                case 'number':
+                    content = renderNumber(question);
+                    break;
+                default:
+                    content = '<div>暂不支持的题型</div>';
+            }
+            
+            return `
+                <div class="question-card ${errorClass}" id="question-card-${question.questionId}">
+                    <div class="question-header">
+                        <span class="question-title">${escapeHtml(question.title)}</span>
+                        ${question.required ? '<span class="required-badge">*必填</span>' : ''}
+                        <span class="question-type-badge">${getTypeName(question.type)}</span>
+                    </div>
+                    ${content}
+                    <div class="error-msg" id="error-${question.questionId}">${hasError || ''}</div>
+                </div>
+            `;
+        }
+        
+        function renderSingleChoice(question) {
+            const options = question.config?.options || [];
+            const currentValue = answers[question.questionId] || '';
+            
+            return `
+                <div class="options-group">
+                    ${options.map(opt => `
+                        <div class="option-item" onclick="document.getElementById('radio-${question.questionId}-${opt.value}').click()">
+                            <input type="radio" 
+                                   name="q_${question.questionId}" 
+                                   id="radio-${question.questionId}-${opt.value}"
+                                   value="${escapeHtml(opt.value)}"
+                                   ${currentValue === opt.value ? 'checked' : ''}
+                                   onchange="saveAnswer('${question.questionId}', this.value)">
+                            <label for="radio-${question.questionId}-${opt.value}">${escapeHtml(opt.label)}</label>
+                        </div>
+                    `).join('')}
+                </div>
+            `;
+        }
+        
+        function renderMultiChoice(question) {
+            const options = question.config?.options || [];
+            const currentValues = answers[question.questionId] || [];
+            
+            return `
+                <div class="options-group">
+                    ${options.map(opt => `
+                        <div class="option-item" onclick="document.getElementById('checkbox-${question.questionId}-${opt.value}').click()">
+                            <input type="checkbox" 
+                                   name="q_${question.questionId}" 
+                                   id="checkbox-${question.questionId}-${opt.value}"
+                                   value="${escapeHtml(opt.value)}"
+                                   ${currentValues.includes(opt.value) ? 'checked' : ''}
+                                   onchange="toggleMultiChoice('${question.questionId}', '${escapeHtml(opt.value)}', this.checked)">
+                            <label for="checkbox-${question.questionId}-${opt.value}">${escapeHtml(opt.label)}</label>
+                        </div>
+                    `).join('')}
+                </div>
+                ${question.config?.minSelect ? `<div style="font-size:12px;color:#999;margin-top:10px;">💡 至少选择 ${question.config.minSelect} 项，最多 ${question.config.maxSelect || '不限'} 项</div>` : ''}
+            `;
+        }
+        
+        function renderText(question) {
+            const currentValue = answers[question.questionId] || '';
+            const config = question.config || {};
+            
+            return `
+                <textarea class="text-input" 
+                          id="text-${question.questionId}"
+                          rows="4"
+                          placeholder="请输入您的回答..."
+                          oninput="saveAnswer('${question.questionId}', this.value)">${escapeHtml(currentValue)}</textarea>
+                ${config.minLength || config.maxLength ? `<div style="font-size:12px;color:#999;margin-top:8px;">💡 ${config.minLength ? `最少${config.minLength}字符` : ''} ${config.maxLength ? `最多${config.maxLength}字符` : ''}</div>` : ''}
+            `;
+        }
+        
+        function renderNumber(question) {
+            const currentValue = answers[question.questionId] || '';
+            const config = question.config || {};
+            
+            return `
+                <input type="number" 
+                       class="number-input" 
+                       id="number-${question.questionId}"
+                       value="${escapeHtml(currentValue)}"
+                       placeholder="请输入数字"
+                       oninput="saveAnswer('${question.questionId}', this.value)"
+                       ${config.minValue !== undefined ? `min="${config.minValue}"` : ''}
+                       ${config.maxValue !== undefined ? `max="${config.maxValue}"` : ''}
+                       ${config.integerOnly ? 'step="1"' : ''}>
+                ${config.minValue !== undefined || config.maxValue !== undefined ? `<div style="font-size:12px;color:#999;margin-top:8px;">💡 取值范围：${config.minValue !== undefined ? config.minValue : '不限'} ~ ${config.maxValue !== undefined ? config.maxValue : '不限'}</div>` : ''}
+            `;
+        }
+        
+        function saveAnswer(questionId, value) {
+            const question = surveyData.questions.find(q => q.questionId === questionId);
+            
+            if (question.type === 'number' && value !== '') {
+                const num = Number(value);
+                if (!isNaN(num)) {
+                    answers[questionId] = num;
+                } else {
+                    answers[questionId] = value;
+                }
+            } else {
+                answers[questionId] = value;
+            }
+            
+            // 清除该题的错误状态
+            delete errorStates[questionId];
+            
+            // 实时验证
+            validateQuestion(questionId);
+        }
+        
+        function toggleMultiChoice(questionId, value, checked) {
+            let current = answers[questionId] || [];
+            if (checked) {
+                if (!current.includes(value)) {
+                    current.push(value);
+                }
+            } else {
+                current = current.filter(v => v !== value);
+            }
+            answers[questionId] = current;
+            delete errorStates[questionId];
+        }
+        
+        function restoreAnswer(question) {
+            const value = answers[question.questionId];
+            if (!value) return;
+            
+            if (question.type === 'single_choice') {
+                // 单选已经通过 checked 属性恢复了
+            } else if (question.type === 'multi_choice') {
+                // 多选已经通过 checked 属性恢复了
+            } else if (question.type === 'text') {
+                const input = document.getElementById(`text-${question.questionId}`);
+                if (input) input.value = value;
+            } else if (question.type === 'number') {
+                const input = document.getElementById(`number-${question.questionId}`);
+                if (input) input.value = value;
+            }
+        }
+        
+        function validateQuestion(questionId) {
+            const question = surveyData.questions.find(q => q.questionId === questionId);
+            if (!question) return true;
+            
+            const answer = answers[questionId];
+            const isEmpty = answer === undefined || answer === null || answer === '' || (Array.isArray(answer) && answer.length === 0);
+            
+            // 必填验证
+            if (question.required && isEmpty) {
+                errorStates[questionId] = '此题为必填项';
+                return false;
+            }
+            
+            // 非必填且为空，跳过其他验证
+            if (isEmpty) {
+                delete errorStates[questionId];
+                return true;
+            }
+            
+            // 多选数量验证
+            if (question.type === 'multi_choice' && Array.isArray(answer)) {
+                const config = question.config || {};
+                if (config.minSelect && answer.length < config.minSelect) {
+                    errorStates[questionId] = `至少选择 ${config.minSelect} 个选项`;
+                    return false;
+                }
+                if (config.maxSelect && answer.length > config.maxSelect) {
+                    errorStates[questionId] = `最多选择 ${config.maxSelect} 个选项`;
+                    return false;
+                }
+            }
+            
+            // 数字范围验证
+            if (question.type === 'number') {
+                const num = Number(answer);
+                const config = question.config || {};
+                if (!isNaN(num)) {
+                    if (config.minValue !== undefined && num < config.minValue) {
+                        errorStates[questionId] = `数值不能小于 ${config.minValue}`;
+                        return false;
+                    }
+                    if (config.maxValue !== undefined && num > config.maxValue) {
+                        errorStates[questionId] = `数值不能大于 ${config.maxValue}`;
+                        return false;
+                    }
+                    if (config.integerOnly && !Number.isInteger(num)) {
+                        errorStates[questionId] = '请输入整数';
+                        return false;
+                    }
+                } else if (answer !== '') {
+                    errorStates[questionId] = '请输入有效的数字';
+                    return false;
+                }
+            }
+            
+            // 文本长度验证
+            if (question.type === 'text') {
+                const len = String(answer).length;
+                const config = question.config || {};
+                if (config.minLength && len < config.minLength) {
+                    errorStates[questionId] = `最少需要 ${config.minLength} 个字符`;
+                    return false;
+                }
+                if (config.maxLength && len > config.maxLength) {
+                    errorStates[questionId] = `最多允许 ${config.maxLength} 个字符`;
+                    return false;
+                }
+            }
+            
+            delete errorStates[questionId];
+            return true;
+        }
+        
+        function validateAllQuestions() {
+            let isValid = true;
+            for (const q of surveyData.questions) {
+                if (!validateQuestion(q.questionId)) {
+                    isValid = false;
+                }
+            }
+            return isValid;
+        }
+        
+        function nextQuestion() {
+            const currentQ = surveyData.questions[currentIndex];
+            
+            if (!validateQuestion(currentQ.questionId)) {
+                // 滚动到错误提示
+                const card = document.getElementById(`question-card-${currentQ.questionId}`);
+                if (card) {
+                    card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                }
+                return;
+            }
+            
+            if (currentIndex < surveyData.questions.length - 1) {
+                currentIndex++;
+                renderQuestionnaire();
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+            }
+        }
+        
+        function prevQuestion() {
+            if (currentIndex > 0) {
+                currentIndex--;
+                renderQuestionnaire();
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+            }
+        }
+        
+        async function submitSurvey() {
+            if (!validateAllQuestions()) {
+                alert('请先完成所有必填项并修正错误');
+                return;
+            }
+            
+            const params = getUrlParams();
+            const surveyId = params.surveyId;
+            
+            // 构建答案数组
+            const answersArray = Object.entries(answers).map(([questionId, value]) => ({
+                questionId,
+                value
+            }));
+            
+            try {
+                const res = await fetch(`${API_BASE}/submit-response`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        surveyId: surveyId,
+                        answers: answersArray,
+                        respondentName: '',
+                        isAnonymous: true
+                    })
+                });
+                
+                const data = await res.json();
+                
+                if (data.success) {
+                    renderSuccess();
+                } else {
+                    alert('提交失败：' + (data.error || '未知错误'));
+                }
+            } catch (err) {
+                alert('网络错误：' + err.message);
+            }
+        }
+        
+        function renderSuccess() {
+            document.getElementById('app').innerHTML = `
+                <div class="success-page">
+                    <div class="success-icon">✅</div>
+                    <h2>提交成功！</h2>
+                    <p>感谢您参与本次问卷调查</p>
+                    <a href="/" class="home-link">返回首页</a>
+                </div>
+            `;
+        }
+        
+        function renderError(message) {
+            document.getElementById('app').innerHTML = `
+                <div class="error-page">
+                    <h2>❌ 出错了</h2>
+                    <p>${escapeHtml(message)}</p>
+                    <a href="/" class="home-link">返回首页</a>
+                </div>
+            `;
+        }
+        
+        function getTypeName(type) {
+            const types = {
+                'single_choice': '单选题',
+                'multi_choice': '多选题',
+                'text': '文本题',
+                'number': '数字题'
+            };
+            return types[type] || type;
+        }
+        
+        function escapeHtml(str) {
+            if (!str) return '';
+            return String(str).replace(/[&<>]/g, function(m) {
+                if (m === '&') return '&amp;';
+                if (m === '<') return '&lt;';
+                if (m === '>') return '&gt;';
+                return m;
+            });
+        }
+        
+        // 启动
+        loadSurvey();
+    </script>
 </body>
 </html>
