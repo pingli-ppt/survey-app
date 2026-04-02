@@ -38,8 +38,11 @@ const QuestionSchema = new mongoose.Schema({
   },
   logic: [{
     conditions: [{
-      type: String,      // option_selected, value_range, option_any
+      type: {
+        type: String, 
+      },
       optionValue: String,
+      optionValues: [String],
       operator: String,  // equals, contains, range
       min: Number,
       max: Number

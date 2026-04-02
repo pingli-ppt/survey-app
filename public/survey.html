@@ -301,6 +301,11 @@
                 }
                 
                 surveyData = data.survey;
+                surveyData.surveyId = surveyId;          // 保存问卷ID
+                surveyData.questionIndexMap = {};        // 建立 questionId -> 索引 的映射
+                surveyData.questions.forEach((q, idx) => {
+                    surveyData.questionIndexMap[q.questionId] = idx;
+                });
                 
                 // 初始化答案
                 surveyData.questions.forEach(q => {
@@ -316,7 +321,29 @@
                 renderError(err.message);
             }
         }
-        
+
+        async function getNextQuestionId(currentQuestionId, answerValue) {
+            try {
+                const res = await fetch(`${API_BASE}/test-jump`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        surveyId: surveyData.surveyId,
+                        currentQuestionId: currentQuestionId,
+                        answer: answerValue
+                    })
+                });
+                const data = await res.json();
+                if (data.success && data.nextQuestionId) {
+                    return data.nextQuestionId;
+                }
+                return null;
+            } catch (err) {
+                console.error('跳转接口调用失败:', err);
+                return null;
+            }
+        }
+
         function renderQuestionnaire() {
             if (!surveyData) return;
             
@@ -467,36 +494,58 @@
         
         function saveAnswer(questionId, value) {
             const question = surveyData.questions.find(q => q.questionId === questionId);
-            
             if (question.type === 'number' && value !== '') {
                 const num = Number(value);
-                if (!isNaN(num)) {
-                    answers[questionId] = num;
-                } else {
-                    answers[questionId] = value;
-                }
+                answers[questionId] = isNaN(num) ? value : num;
             } else {
                 answers[questionId] = value;
             }
-            
-            // 清除该题的错误状态
             delete errorStates[questionId];
-            
-            // 实时验证
             validateQuestion(questionId);
+            // 答案改变后，触发跳转逻辑
+            afterAnswerChanged(questionId);
         }
-        
+
         function toggleMultiChoice(questionId, value, checked) {
             let current = answers[questionId] || [];
             if (checked) {
-                if (!current.includes(value)) {
-                    current.push(value);
-                }
+                if (!current.includes(value)) current.push(value);
             } else {
                 current = current.filter(v => v !== value);
             }
             answers[questionId] = current;
             delete errorStates[questionId];
+            validateQuestion(questionId);
+            afterAnswerChanged(questionId);
+        }
+
+        async function afterAnswerChanged(questionId) {
+            // 获取当前题目的答案（标准化格式）
+            const answer = answers[questionId];
+            let answerForJump = answer;
+            const question = surveyData.questions.find(q => q.questionId === questionId);
+            if (question.type === 'multi_choice') {
+                // 多选答案已经是数组，直接使用
+                answerForJump = answer || [];
+            } else if (question.type === 'number') {
+                answerForJump = answer !== undefined && answer !== '' ? Number(answer) : null;
+            } else {
+                answerForJump = answer || '';
+            }
+
+            const nextId = await getNextQuestionId(questionId, answerForJump);
+            if (nextId) {
+                const targetIndex = surveyData.questionIndexMap[nextId];
+                if (targetIndex !== undefined && targetIndex !== currentIndex) {
+                    currentIndex = targetIndex;
+                    renderQuestionnaire();
+                    window.scrollTo({ top: 0, behavior: 'smooth' });
+                    return;
+                }
+            }
+            // 如果没有跳转目标，且当前题目验证通过，并且是用户主动触发的（不是初始化），可以自动进入下一题
+            // 但为了避免干扰用户填写，我们不在每次输入时自动跳转，只保留“下一题”按钮的跳转。
+            // 所以这里只做跳转，不做自动下一题。
         }
         
         function restoreAnswer(question) {
@@ -599,18 +648,37 @@
             return isValid;
         }
         
-        function nextQuestion() {
+        async function nextQuestion() {
             const currentQ = surveyData.questions[currentIndex];
-            
             if (!validateQuestion(currentQ.questionId)) {
-                // 滚动到错误提示
                 const card = document.getElementById(`question-card-${currentQ.questionId}`);
-                if (card) {
-                    card.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                }
+                if (card) card.scrollIntoView({ behavior: 'smooth', block: 'center' });
                 return;
             }
-            
+
+            // 获取当前题目的答案
+            const answer = answers[currentQ.questionId];
+            let answerForJump = answer;
+            if (currentQ.type === 'multi_choice') {
+                answerForJump = answer || [];
+            } else if (currentQ.type === 'number') {
+                answerForJump = answer !== undefined && answer !== '' ? Number(answer) : null;
+            } else {
+                answerForJump = answer || '';
+            }
+
+            const nextId = await getNextQuestionId(currentQ.questionId, answerForJump);
+            if (nextId) {
+                const targetIndex = surveyData.questionIndexMap[nextId];
+                if (targetIndex !== undefined) {
+                    currentIndex = targetIndex;
+                    renderQuestionnaire();
+                    window.scrollTo({ top: 0, behavior: 'smooth' });
+                    return;
+                }
+            }
+
+            // 默认：下一题
             if (currentIndex < surveyData.questions.length - 1) {
                 currentIndex++;
                 renderQuestionnaire();

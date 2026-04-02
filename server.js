@@ -108,35 +108,79 @@ function validateAnswer(question, answer) {
   return null;
 }
 
-// ========== 跳转逻辑函数 ==========
+// ========== 跳转逻辑函数（增强版）==========
 async function getNextQuestionId(survey, currentQuestionId, answer) {
-  const currentQ = survey.questions.find(q => q.questionId === currentQuestionId);
-  if (!currentQ || !currentQ.logic?.length) return null;
-  
-  for (const rule of currentQ.logic.sort((a, b) => (a.priority || 0) - (b.priority || 0))) {
-    let match = true;
-    
-    for (const cond of rule.conditions) {
-      if (cond.type === "option_selected") {
-        if (answer !== cond.optionValue) match = false;
-      }
-      else if (cond.type === "option_any") {
-        if (!Array.isArray(answer) || !answer.includes(cond.optionValue)) match = false;
-      }
-      else if (cond.type === "value_range") {
-        const num = Number(answer);
-        if (isNaN(num) || num < cond.min || num > cond.max) match = false;
-      }
-    }
-    
-    if (match) {
-      return rule.targetQuestionId;
-    }
-  }
-  
-  return null;
-}
+    const currentQ = survey.questions.find(q => q.questionId === currentQuestionId);
+    if (!currentQ || !currentQ.logic?.length) return null;
 
+    // 1. 根据题目类型标准化答案格式
+    let normalizedAnswer = answer;
+    if (currentQ.type === 'multi_choice') {
+        if (!Array.isArray(answer)) {
+            normalizedAnswer = answer ? [answer] : [];
+        }
+    } else if (currentQ.type === 'single_choice') {
+        if (Array.isArray(answer)) {
+            normalizedAnswer = answer[0];
+        }
+    } else if (currentQ.type === 'number') {
+        normalizedAnswer = Number(answer);
+        if (isNaN(normalizedAnswer)) normalizedAnswer = null;
+    }
+
+    // 2. 按优先级排序（priority 可能为 0，必须使用 ?? 处理）
+    const sortedRules = [...currentQ.logic].sort((a, b) => (a.priority ?? 999) - (b.priority ?? 999));
+
+    for (const rule of sortedRules) {
+        let match = true;
+        for (const cond of rule.conditions) {
+            if (cond.type === 'option_selected') {
+                // 单选：直接比较值
+                if (normalizedAnswer !== cond.optionValue) match = false;
+            } 
+            else if (cond.type === 'option_any') {
+                // 多选：答案数组中必须包含指定选项
+                if (!Array.isArray(normalizedAnswer) || !normalizedAnswer.includes(cond.optionValue)) match = false;
+            } 
+            else if (cond.type === 'option_all') {
+                // 多选：答案数组必须包含所有指定选项
+                if (!Array.isArray(normalizedAnswer) || !cond.optionValues.every(v => normalizedAnswer.includes(v))) match = false;
+            } 
+            else if (cond.type === 'option_exact') {
+                // 多选：答案数组必须与指定选项集合完全一致（顺序无关）
+                if (!Array.isArray(normalizedAnswer) ||
+                    normalizedAnswer.length !== cond.optionValues.length ||
+                    !cond.optionValues.every(v => normalizedAnswer.includes(v))) {
+                    match = false;
+                }
+            } 
+            else if (cond.type === 'value_range') {
+                // 数字范围
+                const num = Number(normalizedAnswer);
+                if (isNaN(num) || num < cond.min || num > cond.max) match = false;
+            }
+            if (!match) break;
+        }
+        if (match) {
+            return rule.targetQuestionId;
+        }
+    }
+    return null;
+}
+app.post("/api/test-jump", async (req, res) => {
+    try {
+        const { surveyId, currentQuestionId, answer } = req.body;
+        const survey = await Survey.findOne({ surveyId });
+        if (!survey) {
+            return res.status(404).json({ error: "问卷不存在" });
+        }
+        const nextId = await getNextQuestionId(survey, currentQuestionId, answer);
+        res.json({ success: true, nextQuestionId: nextId });
+    } catch (err) {
+        console.error("跳转测试错误:", err);
+        res.status(500).json({ error: err.message });
+    }
+});
 // ========== 用户 API ==========
 
 // 首页
@@ -362,7 +406,32 @@ app.get("/api/survey/:surveyId", async (req, res) => {
 app.post("/api/add-question", authMiddleware, async (req, res) => {
   try {
     const { surveyId, questionId, title, type, required, config } = req.body;
-    
+
+    // ===== 配置校验 =====
+    if (type === "text") {
+      if (
+        config?.minLength !== undefined &&
+        config?.maxLength !== undefined &&
+        config.minLength > config.maxLength
+      ) {
+        return res.status(400).json({
+          error: "文本题：最大长度必须大于或等于最小长度"
+        });
+      }
+    }
+
+    if (type === "number") {
+      if (
+        config?.minValue !== undefined &&
+        config?.maxValue !== undefined &&
+        config.minValue > config.maxValue
+      ) {
+        return res.status(400).json({
+          error: "数字题：最大值必须大于或等于最小值"
+        });
+      }
+    }
+
     const survey = await Survey.findOne({ surveyId, creatorId: req.user._id });
     if (!survey) {
       return res.status(404).json({ error: "问卷不存在或无权限" });
@@ -390,38 +459,156 @@ app.post("/api/add-question", authMiddleware, async (req, res) => {
   }
 });
 
-// 添加跳转逻辑
 app.post("/api/add-logic", authMiddleware, async (req, res) => {
   try {
-    const { surveyId, sourceQuestionId, conditions, targetQuestionId, priority } = req.body;
-    
+    let { surveyId, sourceQuestionId, conditions, targetQuestionId, priority } = req.body;
+
+    // ===== 1️⃣ 基础校验 =====
+    if (!surveyId || !sourceQuestionId || !conditions || !targetQuestionId) {
+      return res.status(400).json({ error: "参数不完整" });
+    }
+
+    // ===== 2️⃣ 防止 conditions 是字符串（你之前的坑）=====
+    if (typeof conditions === "string") {
+      try {
+        conditions = JSON.parse(conditions);
+      } catch (e) {
+        return res.status(400).json({ error: "conditions 格式错误，应为数组" });
+      }
+    }
+
+    if (!Array.isArray(conditions)) {
+      return res.status(400).json({ error: "conditions 必须是数组" });
+    }
+
+    // ===== 3️⃣ 查问卷 =====
     const survey = await Survey.findOne({ surveyId, creatorId: req.user._id });
     if (!survey) {
       return res.status(404).json({ error: "问卷不存在或无权限" });
     }
-    
+
     const question = survey.questions.find(q => q.questionId === sourceQuestionId);
     if (!question) {
       return res.status(404).json({ error: "源题目不存在" });
     }
-    
-    // 检查目标题目是否存在
+
+    // ===== 4️⃣ 检查目标题 =====
     if (!survey.questions.some(q => q.questionId === targetQuestionId)) {
       return res.status(404).json({ error: "目标题目不存在" });
     }
-    
-    question.logic = question.logic || [];
-    question.logic.push({
-      conditions,
-      targetQuestionId,
-      priority: priority || question.logic.length + 1
+
+    // ===== 5️⃣ 标准化 conditions（🔥关键）=====
+    const normalizedConditions = conditions.map(cond => {
+      if (!cond.type) {
+        throw new Error("条件缺少 type");
+      }
+
+      // 单选
+      if (cond.type === "option_selected") {
+        if (!cond.optionValue) {
+          throw new Error("单选条件缺少 optionValue");
+        }
+        return {
+          type: "option_selected",
+          operator: "equals",
+          optionValue: cond.optionValue
+        };
+      }
+
+      // 多选
+      // 任意命中
+      if (cond.type === "option_any") {
+        if (!cond.optionValue) {
+          throw new Error("option_any 缺少 optionValue");
+        }
+        return {
+          type: "option_any",
+          operator: "contains",
+          optionValue: cond.optionValue
+        };
+      }
+
+      // ⭐ 必须全部包含
+      if (cond.type === "option_all") {
+        if (!Array.isArray(cond.optionValues) || cond.optionValues.length === 0) {
+          throw new Error("option_all 必须提供 optionValues 数组");
+        }
+        return {
+          type: "option_all",
+          operator: "contains_all",
+          optionValues: cond.optionValues
+        };
+      }
+
+      // ⭐ 完全匹配
+      if (cond.type === "option_exact") {
+        if (!Array.isArray(cond.optionValues) || cond.optionValues.length === 0) {
+          throw new Error("option_exact 必须提供 optionValues 数组");
+        }
+        return {
+          type: "option_exact",
+          operator: "equals",
+          optionValues: cond.optionValues
+        };
+      }
+
+      // 数字
+      if (cond.type === "value_range") {
+        const min = Number(cond.min);
+        const max = Number(cond.max);
+
+        if (isNaN(min) || isNaN(max)) {
+          throw new Error("数值范围必须是数字");
+        }
+
+        if (min > max) {
+          throw new Error("最小值不能大于最大值");
+        }
+
+        return {
+          type: "value_range",
+          operator: "range",
+          min,
+          max
+        };
+      }
+
+      throw new Error(`不支持的条件类型: ${cond.type}`);
     });
-    
+
+    // ===== 6️⃣ 初始化 logic =====
+    question.logic = question.logic || [];
+
+    // ===== 7️⃣ 自动处理优先级 =====
+    const finalPriority =
+      priority !== undefined
+        ? Number(priority)
+        : question.logic.length + 1;
+
+    // ===== 8️⃣ 写入 =====
+    question.logic.push({
+      conditions: normalizedConditions,
+      targetQuestionId,
+      priority: finalPriority
+    });
+
     await survey.save();
-    res.json({ success: true, message: "跳转逻辑添加成功" });
+
+    res.json({
+      success: true,
+      message: "跳转逻辑添加成功",
+      logic: {
+        conditions: normalizedConditions,
+        targetQuestionId,
+        priority: finalPriority
+      }
+    });
+
   } catch (err) {
     console.error("添加跳转逻辑错误:", err);
-    res.status(500).json({ error: err.message });
+    res.status(500).json({
+      error: err.message || "服务器错误"
+    });
   }
 });
 
@@ -733,7 +920,31 @@ app.delete("/api/delete-logic", authMiddleware, async (req, res) => {
 app.put("/api/update-question", authMiddleware, async (req, res) => {
   try {
     const { surveyId, questionId, title, required, config } = req.body;
-    
+    if (config) {
+      if (question.type === "text") {
+        if (
+          config.minLength !== undefined &&
+          config.maxLength !== undefined &&
+          config.minLength > config.maxLength
+        ) {
+          return res.status(400).json({
+            error: "文本题：最大长度必须大于或等于最小长度"
+          });
+        }
+      }
+
+      if (question.type === "number") {
+        if (
+          config.minValue !== undefined &&
+          config.maxValue !== undefined &&
+          config.minValue > config.maxValue
+        ) {
+          return res.status(400).json({
+            error: "数字题：最大值必须大于或等于最小值"
+          });
+        }
+      }
+    }
     const survey = await Survey.findOne({ surveyId, creatorId: req.user._id });
     if (!survey) {
       return res.status(404).json({ error: "问卷不存在或无权限" });

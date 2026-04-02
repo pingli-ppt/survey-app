@@ -309,41 +309,80 @@ async function submitSurvey() {
         alert("请先登录");
         return;
     }
-    
-    const survey = {
-        title: document.getElementById("surveyTitle")?.value.trim(),
-        description: document.getElementById("surveyDesc")?.value.trim(),
-        allowAnonymous: document.getElementById("allowAnon")?.checked || false,
-        questions: tempQuestions,
-        logic: tempLogic
-    };
-    if (!survey.title) { alert("问卷标题不能为空"); return; }
-    if (survey.questions.length === 0) { alert("请至少添加一个题目"); return; }
-    
+
+    const title = document.getElementById("surveyTitle")?.value.trim();
+    const description = document.getElementById("surveyDesc")?.value.trim();
+
+    if (!title) {
+        alert("问卷标题不能为空");
+        return;
+    }
+
+    if (tempQuestions.length === 0) {
+        alert("请至少添加一个题目");
+        return;
+    }
+
     try {
-        const res = await fetch("/create-survey", {
+        // ✅ 第一步：创建问卷
+        const res = await fetch("/api/create-survey", {
             method: "POST",
             headers: {
                 "Content-Type": "application/json",
                 ...getAuthHeaders()
             },
-            body: JSON.stringify(survey)
+            body: JSON.stringify({
+                title,
+                description,
+                allowAnonymous: true
+            })
         });
-        const result = await res.json();
-        if (res.ok) {
-            document.getElementById("submitSurveyResult").innerHTML = `✅ ${result.message}`;
-            tempQuestions = [];
-            tempLogic = [];
-            loadMySurveys();
-        } else {
-            document.getElementById("submitSurveyResult").innerHTML = `❌ ${result.error}`;
+
+        const data = await res.json();
+
+        if (!data.success) {
+            alert("创建问卷失败：" + data.error);
+            return;
         }
+
+        const surveyId = data.survey.surveyId;
+
+        // ✅ 第二步：添加题目
+        for (const q of tempQuestions) {
+            const qRes = await fetch("/api/add-question", {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    ...getAuthHeaders()
+                },
+                body: JSON.stringify({
+                    surveyId,
+                    questionId: q.questionId,
+                    title: q.questionId,
+                    type: q.type,
+                    required: q.required,
+                    config: q.config
+                })
+            });
+
+            const qData = await qRes.json();
+            if (!qData.success) {
+                console.error("添加题目失败:", qData.error);
+            }
+        }
+
+        // ✅ 完成
+        document.getElementById("submitSurveyResult").innerHTML =
+            `✅ 创建成功！问卷ID：${surveyId}`;
+
+        tempQuestions = [];
+        loadMySurveys();
+
     } catch (err) {
         console.error(err);
-        document.getElementById("submitSurveyResult").innerHTML = "❌ 问卷创建失败";
+        alert("创建失败");
     }
 }
-
 // ========== 填写问卷 ==========
 async function viewSurvey(surveyId) {
     try {
