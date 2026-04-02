@@ -108,7 +108,7 @@ function validateAnswer(question, answer) {
   return null;
 }
 
-// ========== 跳转逻辑函数（增强版）==========
+// ========== 跳转逻辑函数（增强版，已移除 option_all 和 option_exact）==========
 async function getNextQuestionId(survey, currentQuestionId, answer) {
     const currentQ = survey.questions.find(q => q.questionId === currentQuestionId);
     if (!currentQ || !currentQ.logic?.length) return null;
@@ -128,7 +128,7 @@ async function getNextQuestionId(survey, currentQuestionId, answer) {
         if (isNaN(normalizedAnswer)) normalizedAnswer = null;
     }
 
-    // 2. 按优先级排序（priority 可能为 0，必须使用 ?? 处理）
+    // 2. 按优先级排序
     const sortedRules = [...currentQ.logic].sort((a, b) => (a.priority ?? 999) - (b.priority ?? 999));
 
     for (const rule of sortedRules) {
@@ -141,18 +141,6 @@ async function getNextQuestionId(survey, currentQuestionId, answer) {
             else if (cond.type === 'option_any') {
                 // 多选：答案数组中必须包含指定选项
                 if (!Array.isArray(normalizedAnswer) || !normalizedAnswer.includes(cond.optionValue)) match = false;
-            } 
-            else if (cond.type === 'option_all') {
-                // 多选：答案数组必须包含所有指定选项
-                if (!Array.isArray(normalizedAnswer) || !cond.optionValues.every(v => normalizedAnswer.includes(v))) match = false;
-            } 
-            else if (cond.type === 'option_exact') {
-                // 多选：答案数组必须与指定选项集合完全一致（顺序无关）
-                if (!Array.isArray(normalizedAnswer) ||
-                    normalizedAnswer.length !== cond.optionValues.length ||
-                    !cond.optionValues.every(v => normalizedAnswer.includes(v))) {
-                    match = false;
-                }
             } 
             else if (cond.type === 'value_range') {
                 // 数字范围
@@ -167,34 +155,21 @@ async function getNextQuestionId(survey, currentQuestionId, answer) {
     }
     return null;
 }
-app.post("/api/test-jump", async (req, res) => {
-    try {
-        const { surveyId, currentQuestionId, answer } = req.body;
-        const survey = await Survey.findOne({ surveyId });
-        if (!survey) {
-            return res.status(404).json({ error: "问卷不存在" });
-        }
-        const nextId = await getNextQuestionId(survey, currentQuestionId, answer);
-        res.json({ success: true, nextQuestionId: nextId });
-    } catch (err) {
-        console.error("跳转测试错误:", err);
-        res.status(500).json({ error: err.message });
-    }
-});
+
 // ========== 用户 API ==========
 
 // 首页
 app.get("/", (req, res) => {
   res.sendFile(path.join(__dirname, "public", "index.html"));
 });
-// 注册 - 确保正确加密
+
+// 注册
 app.post("/api/register", async (req, res) => {
   try {
     console.log("收到注册请求:", req.body);
     
     const { username, password, email } = req.body;
     
-    // 参数校验
     if (!username || !password) {
       return res.status(400).json({ error: "用户名和密码不能为空" });
     }
@@ -207,13 +182,11 @@ app.post("/api/register", async (req, res) => {
       return res.status(400).json({ error: "密码至少6个字符" });
     }
     
-    // 检查用户是否已存在
     const existingUser = await User.findOne({ username });
     if (existingUser) {
       return res.status(400).json({ error: "用户名已存在" });
     }
     
-    // 🔥 正确加密密码
     const bcrypt = require("bcryptjs");
     const salt = await bcrypt.genSalt(10);
     const hashedPassword = await bcrypt.hash(password, salt);
@@ -221,10 +194,9 @@ app.post("/api/register", async (req, res) => {
     console.log("原始密码:", password);
     console.log("加密后密码:", hashedPassword);
     
-    // 创建新用户（使用加密后的密码）
     const user = new User({ 
       username: username.trim(), 
-      password: hashedPassword,  // 这里必须是加密后的密码
+      password: hashedPassword,
       email: email || ""
     });
     
@@ -233,7 +205,6 @@ app.post("/api/register", async (req, res) => {
     console.log("用户创建成功:", user.username);
     console.log("数据库中存储的密码:", user.password);
     
-    // 生成 token
     const token = jwt.sign(
       { userId: user._id, username: user.username }, 
       JWT_SECRET, 
@@ -264,8 +235,6 @@ app.get("/api/me", authMiddleware, async (req, res) => {
   res.json({ success: true, user: req.user });
 });
 
-// ========== 问卷 API ==========
-
 // 获取我的问卷列表
 app.get("/api/my-surveys", authMiddleware, async (req, res) => {
   try {
@@ -276,7 +245,8 @@ app.get("/api/my-surveys", authMiddleware, async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
-// 登录 - 使用 bcrypt 验证
+
+// 登录
 app.post("/api/login", async (req, res) => {
   try {
     console.log("收到登录请求:", req.body.username);
@@ -287,7 +257,6 @@ app.post("/api/login", async (req, res) => {
       return res.status(400).json({ error: "用户名和密码不能为空" });
     }
     
-    // 查找用户
     const user = await User.findOne({ username });
     if (!user) {
       return res.status(401).json({ error: "用户名或密码错误" });
@@ -296,7 +265,6 @@ app.post("/api/login", async (req, res) => {
     console.log("用户密码:", user.password);
     console.log("输入的密码:", password);
     
-    // 🔥 使用 bcrypt 验证密码
     const bcrypt = require("bcryptjs");
     const isValid = await bcrypt.compare(password, user.password);
     
@@ -306,7 +274,6 @@ app.post("/api/login", async (req, res) => {
       return res.status(401).json({ error: "用户名或密码错误" });
     }
     
-    // 生成 token
     const token = jwt.sign(
       { userId: user._id, username: user.username }, 
       JWT_SECRET, 
@@ -350,7 +317,6 @@ app.post("/api/create-survey", authMiddleware, async (req, res) => {
     
     await survey.save();
     
-    // 更新用户的问卷列表
     req.user.survey_ids.push(survey._id);
     await req.user.save();
     
@@ -369,7 +335,6 @@ app.get("/api/survey/:surveyId", async (req, res) => {
       return res.status(404).json({ error: "问卷不存在" });
     }
     
-    // 检查截止时间
     if (survey.deadline && new Date() > survey.deadline) {
       return res.status(403).json({ error: "问卷已截止" });
     }
@@ -378,7 +343,6 @@ app.get("/api/survey/:surveyId", async (req, res) => {
       return res.status(403).json({ error: "问卷未发布" });
     }
     
-    // 返回问卷
     res.json({
       success: true,
       survey: {
@@ -407,7 +371,6 @@ app.post("/api/add-question", authMiddleware, async (req, res) => {
   try {
     const { surveyId, questionId, title, type, required, config } = req.body;
 
-    // ===== 配置校验 =====
     if (type === "text") {
       if (
         config?.minLength !== undefined &&
@@ -437,7 +400,6 @@ app.post("/api/add-question", authMiddleware, async (req, res) => {
       return res.status(404).json({ error: "问卷不存在或无权限" });
     }
     
-    // 检查 questionId 是否重复
     if (survey.questions.some(q => q.questionId === questionId)) {
       return res.status(400).json({ error: "题目ID已存在" });
     }
@@ -459,16 +421,15 @@ app.post("/api/add-question", authMiddleware, async (req, res) => {
   }
 });
 
+// 添加跳转逻辑（已移除 option_all 和 option_exact）
 app.post("/api/add-logic", authMiddleware, async (req, res) => {
   try {
     let { surveyId, sourceQuestionId, conditions, targetQuestionId, priority } = req.body;
 
-    // ===== 1️⃣ 基础校验 =====
     if (!surveyId || !sourceQuestionId || !conditions || !targetQuestionId) {
       return res.status(400).json({ error: "参数不完整" });
     }
 
-    // ===== 2️⃣ 防止 conditions 是字符串（你之前的坑）=====
     if (typeof conditions === "string") {
       try {
         conditions = JSON.parse(conditions);
@@ -481,7 +442,6 @@ app.post("/api/add-logic", authMiddleware, async (req, res) => {
       return res.status(400).json({ error: "conditions 必须是数组" });
     }
 
-    // ===== 3️⃣ 查问卷 =====
     const survey = await Survey.findOne({ surveyId, creatorId: req.user._id });
     if (!survey) {
       return res.status(404).json({ error: "问卷不存在或无权限" });
@@ -492,18 +452,16 @@ app.post("/api/add-logic", authMiddleware, async (req, res) => {
       return res.status(404).json({ error: "源题目不存在" });
     }
 
-    // ===== 4️⃣ 检查目标题 =====
     if (!survey.questions.some(q => q.questionId === targetQuestionId)) {
       return res.status(404).json({ error: "目标题目不存在" });
     }
 
-    // ===== 5️⃣ 标准化 conditions（🔥关键）=====
+    // 标准化 conditions（只保留 option_selected, option_any, value_range）
     const normalizedConditions = conditions.map(cond => {
       if (!cond.type) {
         throw new Error("条件缺少 type");
       }
 
-      // 单选
       if (cond.type === "option_selected") {
         if (!cond.optionValue) {
           throw new Error("单选条件缺少 optionValue");
@@ -515,8 +473,6 @@ app.post("/api/add-logic", authMiddleware, async (req, res) => {
         };
       }
 
-      // 多选
-      // 任意命中
       if (cond.type === "option_any") {
         if (!cond.optionValue) {
           throw new Error("option_any 缺少 optionValue");
@@ -528,31 +484,6 @@ app.post("/api/add-logic", authMiddleware, async (req, res) => {
         };
       }
 
-      // ⭐ 必须全部包含
-      if (cond.type === "option_all") {
-        if (!Array.isArray(cond.optionValues) || cond.optionValues.length === 0) {
-          throw new Error("option_all 必须提供 optionValues 数组");
-        }
-        return {
-          type: "option_all",
-          operator: "contains_all",
-          optionValues: cond.optionValues
-        };
-      }
-
-      // ⭐ 完全匹配
-      if (cond.type === "option_exact") {
-        if (!Array.isArray(cond.optionValues) || cond.optionValues.length === 0) {
-          throw new Error("option_exact 必须提供 optionValues 数组");
-        }
-        return {
-          type: "option_exact",
-          operator: "equals",
-          optionValues: cond.optionValues
-        };
-      }
-
-      // 数字
       if (cond.type === "value_range") {
         const min = Number(cond.min);
         const max = Number(cond.max);
@@ -576,16 +507,13 @@ app.post("/api/add-logic", authMiddleware, async (req, res) => {
       throw new Error(`不支持的条件类型: ${cond.type}`);
     });
 
-    // ===== 6️⃣ 初始化 logic =====
     question.logic = question.logic || [];
 
-    // ===== 7️⃣ 自动处理优先级 =====
     const finalPriority =
       priority !== undefined
         ? Number(priority)
         : question.logic.length + 1;
 
-    // ===== 8️⃣ 写入 =====
     question.logic.push({
       conditions: normalizedConditions,
       targetQuestionId,
@@ -617,18 +545,15 @@ app.post("/api/submit-response", async (req, res) => {
   try {
     const { surveyId, answers, respondentName, isAnonymous } = req.body;
     
-    // 查找问卷
     const survey = await Survey.findOne({ surveyId });
     if (!survey) {
       return res.status(404).json({ error: "问卷不存在" });
     }
     
-    // 检查截止时间
     if (survey.deadline && new Date() > survey.deadline) {
       return res.status(403).json({ error: "问卷已截止" });
     }
     
-    // 校验所有答案
     for (const q of survey.questions) {
       const answer = answers?.find(a => a.questionId === q.questionId);
       const validationError = validateAnswer(q, answer?.value);
@@ -637,7 +562,6 @@ app.post("/api/submit-response", async (req, res) => {
       }
     }
     
-    // 保存答卷
     const response = new Response({
       surveyId: survey._id,
       respondentName: isAnonymous ? null : (respondentName || "匿名用户"),
@@ -666,13 +590,11 @@ app.get("/api/survey-stats/:surveyId", authMiddleware, async (req, res) => {
     
     const responses = await Response.find({ surveyId: survey._id });
     
-    // 构建统计结果
     const stats = {
       totalResponses: responses.length,
       questions: {}
     };
     
-    // 初始化统计结构
     for (const q of survey.questions) {
       stats.questions[q.questionId] = {
         title: q.title || q.questionId,
@@ -705,7 +627,6 @@ app.get("/api/survey-stats/:surveyId", authMiddleware, async (req, res) => {
       }
     }
     
-    // 统计答卷数据
     for (const r of responses) {
       for (const a of r.answers) {
         const qStat = stats.questions[a.questionId];
@@ -741,7 +662,6 @@ app.get("/api/survey-stats/:surveyId", authMiddleware, async (req, res) => {
       }
     }
     
-    // 计算数字题平均值
     for (const q of survey.questions) {
       const qStat = stats.questions[q.questionId];
       if (qStat?.type === "number" && qStat.values.length > 0) {
@@ -778,7 +698,6 @@ app.get("/api/test-register", async (req, res) => {
   try {
     const { username, password } = req.query;
     
-    // 删除已存在的测试用户
     await User.deleteOne({ username: username || "testuser" });
     
     const user = new User({ 
@@ -797,7 +716,8 @@ app.get("/api/test-register", async (req, res) => {
     res.json({ success: false, error: err.message });
   }
 });
-// 获取我的单个问卷详情（带完整题目和逻辑）
+
+// 获取我的单个问卷详情
 app.get("/api/my-survey/:surveyId", authMiddleware, async (req, res) => {
   try {
     console.log("获取问卷详情，surveyId:", req.params.surveyId);
@@ -832,6 +752,7 @@ app.get("/api/my-survey/:surveyId", authMiddleware, async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
+
 // 更新问卷信息
 app.put("/api/update-survey", authMiddleware, async (req, res) => {
   try {
@@ -872,7 +793,6 @@ app.delete("/api/delete-question", authMiddleware, async (req, res) => {
     
     survey.questions.splice(questionIndex, 1);
     
-    // 重新排序
     survey.questions.forEach((q, idx) => {
       q.order = idx;
     });
@@ -920,31 +840,7 @@ app.delete("/api/delete-logic", authMiddleware, async (req, res) => {
 app.put("/api/update-question", authMiddleware, async (req, res) => {
   try {
     const { surveyId, questionId, title, required, config } = req.body;
-    if (config) {
-      if (question.type === "text") {
-        if (
-          config.minLength !== undefined &&
-          config.maxLength !== undefined &&
-          config.minLength > config.maxLength
-        ) {
-          return res.status(400).json({
-            error: "文本题：最大长度必须大于或等于最小长度"
-          });
-        }
-      }
-
-      if (question.type === "number") {
-        if (
-          config.minValue !== undefined &&
-          config.maxValue !== undefined &&
-          config.minValue > config.maxValue
-        ) {
-          return res.status(400).json({
-            error: "数字题：最大值必须大于或等于最小值"
-          });
-        }
-      }
-    }
+    
     const survey = await Survey.findOne({ surveyId, creatorId: req.user._id });
     if (!survey) {
       return res.status(404).json({ error: "问卷不存在或无权限" });
@@ -957,7 +853,32 @@ app.put("/api/update-question", authMiddleware, async (req, res) => {
     
     if (title) question.title = title;
     if (required !== undefined) question.required = required;
-    if (config) question.config = { ...question.config, ...config };
+    if (config) {
+      // 校验配置
+      if (question.type === "text") {
+        if (
+          config.minLength !== undefined &&
+          config.maxLength !== undefined &&
+          config.minLength > config.maxLength
+        ) {
+          return res.status(400).json({
+            error: "文本题：最大长度必须大于或等于最小长度"
+          });
+        }
+      }
+      if (question.type === "number") {
+        if (
+          config.minValue !== undefined &&
+          config.maxValue !== undefined &&
+          config.minValue > config.maxValue
+        ) {
+          return res.status(400).json({
+            error: "数字题：最大值必须大于或等于最小值"
+          });
+        }
+      }
+      question.config = { ...question.config, ...config };
+    }
     
     await survey.save();
     

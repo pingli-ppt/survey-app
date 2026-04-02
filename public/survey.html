@@ -502,8 +502,6 @@
             }
             delete errorStates[questionId];
             validateQuestion(questionId);
-            // 答案改变后，触发跳转逻辑
-            afterAnswerChanged(questionId);
         }
 
         function toggleMultiChoice(questionId, value, checked) {
@@ -516,38 +514,8 @@
             answers[questionId] = current;
             delete errorStates[questionId];
             validateQuestion(questionId);
-            afterAnswerChanged(questionId);
         }
 
-        async function afterAnswerChanged(questionId) {
-            // 获取当前题目的答案（标准化格式）
-            const answer = answers[questionId];
-            let answerForJump = answer;
-            const question = surveyData.questions.find(q => q.questionId === questionId);
-            if (question.type === 'multi_choice') {
-                // 多选答案已经是数组，直接使用
-                answerForJump = answer || [];
-            } else if (question.type === 'number') {
-                answerForJump = answer !== undefined && answer !== '' ? Number(answer) : null;
-            } else {
-                answerForJump = answer || '';
-            }
-
-            const nextId = await getNextQuestionId(questionId, answerForJump);
-            if (nextId) {
-                const targetIndex = surveyData.questionIndexMap[nextId];
-                if (targetIndex !== undefined && targetIndex !== currentIndex) {
-                    currentIndex = targetIndex;
-                    renderQuestionnaire();
-                    window.scrollTo({ top: 0, behavior: 'smooth' });
-                    return;
-                }
-            }
-            // 如果没有跳转目标，且当前题目验证通过，并且是用户主动触发的（不是初始化），可以自动进入下一题
-            // 但为了避免干扰用户填写，我们不在每次输入时自动跳转，只保留“下一题”按钮的跳转。
-            // 所以这里只做跳转，不做自动下一题。
-        }
-        
         function restoreAnswer(question) {
             const value = answers[question.questionId];
             if (!value) return;
