@@ -8,9 +8,7 @@
 
 ## 一、项目目标
 
-本项目实现了一个基于 MongoDB 的在线问卷系统。系统整体参考常见问卷工具的基本功能，但在实现上做了简化，重点放在数据结构设计和核心逻辑上。
-
-系统支持用户注册登录、创建问卷、设计题目、填写问卷以及查看统计结果。相比简单的表单系统，本项目额外实现了题目跳转逻辑和较完整的数据校验机制。
+本项目实现了一个基于 MongoDB 的在线问卷系统。系统支持用户注册登录、创建问卷、设计题目、填写问卷以及查看统计结果。相比简单的表单系统，本项目额外实现了题目跳转逻辑和较完整的数据校验机制。
 
 在开发过程中，主要目标不是做复杂界面，而是把数据流和逻辑跑通，并保证结构具有一定扩展性。
 
@@ -48,7 +46,7 @@
 
 #### 4. 答卷模块
 
-保存用户填写的答案，同时记录设备信息（IP、UA）
+保存用户填写的答案
 
 #### 5. 统计模块
 
@@ -70,18 +68,20 @@
 
 ```js
 {
-  username: String,
-  password: String,
-  email: String,
-  survey_ids: [ObjectId],
-  createdAt: Date
+"_id": ObjectId("用户唯一ID"),
+"username": "zhangsan", // 用户名
+"password": "$2b$10$...", // 加密后的密码
+"email": "zhangsan@example.com", // 邮箱（可选）
+"createdAt": ISODate("2024-01-01T00:00:00Z")//创建时间
+"survey_ids": [ObjectId] // 冗余：用户的问卷列表
 }
+
 ```
 
 特点：
 
-* 使用数组保存用户创建的问卷引用（冗余）（id）呢
-* 密码使用 bcrypt 加密存储
+* 使用数组保存用户创建的问卷引用，
+* survey_ids 冗余存储，避免每次查询用户问卷时都关联 surveys 集合
 
 ---
 
@@ -89,34 +89,43 @@
 
 ```js
 {
-  surveyId: String,
-  title: String,
-  description: String,
-  allowAnonymous: Boolean,
-  allowMultipleSubmit: Boolean,
-  status: String,
-  deadline: Date,
-  creatorId: ObjectId,
-  questions: [...]
+"_id": ObjectId("问卷唯一ID"),
+"surveyId": "SURV_20240001", // 业务ID，用于URL：/survey/SURV_20240001
+"creatorId": ObjectId("创建者ID"), // 关联 users._id
+"title": "问卷标题", 
+"description": "说明"
+"allow_multiple_submit": true，
+"status": "draft", // draft, published, closed
+"allowAnonymous": false, // 是否允许匿名填写
+"deadline": ISODate("2024-12-31T23:59:59Z"), // 截止时间
+"createdAt": ISODate("2024-01-01T00:00:00Z"),
+"publishedAt": ISODate("..."), // 发布时间
 }
+
 ```
-
-**关键点：questions 是嵌套结构**（id呢，create，public）
-
+特点：
+* surveyId 作为业务可读 ID，便于 URL 使用
+* creatorId 关联用户集合
+* 冗余存储 allowAnonymous / allowMultipleSubmit，方便快速判断问卷属性
 ---
 
 ### Question 结构（嵌套在 Survey 中）
 
 ```js
 {
-  questionId: String,
-  type: "single_choice | multi_choice | text | number",
-  required: Boolean,
-  order: Number,
-  config: {...},
-  logic: [...]
+"questionId": "q1", // 题目编号，如 q1, q2，用于跳转
+"surveyId": ObjectId("所属问卷ID"),
+"order": 1,                       // 显示顺序
+"type": "single_choice", // single_choice, multi_choice, text, number
+"required": true, // 是否必填
+"createdAt": ISODate("2024-01-01T00:00:00Z")
 }
+
 ```
+特点：
+
+* 题目共享同一集合，通过 type 区分不同题型
+* questionId 可读，支持跳转规则
 
 ---
 
@@ -146,48 +155,76 @@
 
 ```js
 {
-  conditions: [
-    {
-      type: "option_selected | option_any | value_range",
-      optionValue,
-      operator,
-      min,
-      max
-    }
-  ],
-  targetQuestionId: String,
-  priority: Number
+"_id": ObjectId("规则唯一ID"),
+"surveyId": ObjectId("所属问卷ID"),
+"sourceQuestionId": "q1", // 源题目ID
+"conditions": [ // 支持多个条件组合（AND）
+{
+"type": "option_selected", // option_selected, value_range, option_any
+"optionValue": "male", // 对于选项选择
+// 或用于数值范围
+"operator": ">=", // >=, <=, >, <, ==
+"value": 18
 }
+],
+"operator": "AND", // 多个条件的关系：AND, OR
+"targetQuestionId": "q5", // 跳转目标题目ID
+"priority": 1, // 优先级，数字越小越优先
+"createdAt": ISODate("2024-01-01T00:00:00Z")
+}
+
 ```
 
-支持三种跳转方式：
-
-* 单选匹配
-* 多选包含
-* 数值区间判断
-
+* 支持单选、多选、数值题跳转
+* 优先级字段解决规则冲突
 ---
 
 ### （3）Response 集合
 
 ```js
 {
-  surveyId: ObjectId,
-  respondentName: String,
-  isAnonymous: Boolean,
-  answers: [
-    { questionId, value }
-  ],
-  ipAddress: String,
-  userAgent: String,
-  createdAt: Date
+"_id": ObjectId("答卷唯一ID"),
+"surveyId": ObjectId("问卷ID"),
+"responseId": "RESP_001", // 答卷编号，便于追踪
+"respondentId": ObjectId("填写者ID"), // 如果登录填写，关联 users._id
+"respondentName": "zhangsan", // 冗余字段，便于统计查看
+"isAnonymous": false, // 是否匿名填写
+"answers": [ // 答案列表，按题目顺序存储
+{
+"questionId": "q1",
+"type": "single_choice",
+"value": "male" // 单选题：选项值
+},
+{
+"questionId": "q2",
+"type": "multi_choice",
+"value": ["apple", "banana"] // 多选题：选项值数组
+},
+{
+"questionId": "q3",
+"type": "text",
+"value": "这是一个文本答案"
+},
+{
+"questionId": "q4",
+"type": "number",
+"value": 25
 }
+],
+"completedAt": ISODate("2024-01-01T12:00:00Z"),
+"ip": "192.168.1.1", // 用于防刷
+"userAgent": "Mozilla/5.0..." 
+
+}
+
 ```
 
 特点：
 
 * answers 使用数组存储，结构简单（id,答卷编号，填写者id,ip，useragent）
 * value 使用 Mixed，兼容不同题型
+* 冗余存储 respondentName，统计时无需关联用户集合
+* surveyId 冗余，便于分片、快速查询
 
 ---
 
@@ -197,7 +234,7 @@
 
 MySQL问题很明显：
 
-* 题目类型不统一（字段差异大）
+* 题目类型不统一，字段差异大
 * 跳转逻辑是嵌套结构
 * 问卷本身是层级数据（问卷 → 题目 → 逻辑）
 
@@ -296,17 +333,58 @@ getNextQuestionId()
 
 ## 六、API 设计
 
-| 接口                    | 功能   |
-| --------------------- | ---- |
-| /api/register         | 注册   |
-| /api/login            | 登录   |
-| /api/create-survey    | 创建问卷 |
-| /api/add-question     | 添加题目 |
-| /api/add-logic        | 添加跳转 |
-| /api/submit-response  | 提交答卷 |
-| /api/survey-stats/:id | 查看统计 |
 
----
+### 接口列表
+
+| 方法 | 路径 | 功能 | 认证 | 请求参数（Body / Query） |
+|------|------|------|------|--------------------------|
+| POST | `/register` | 用户注册 | 否 | `username`, `password`, `email`(可选) |
+| POST | `/login` | 用户登录 | 否 | `username`, `password` |
+| GET | `/me` | 获取当前用户信息 | 是 | 无 |
+| GET | `/my-surveys` | 获取我的问卷列表 | 是 | 无 |
+| GET | `/my-survey/:surveyId` | 获取单个问卷详情（编辑用） | 是 | URL参数：`surveyId` |
+| POST | `/create-survey` | 创建问卷 | 是 | `title`, `description`(可选), `allowAnonymous`(可选), `allowMultipleSubmit`(可选), `deadline`(可选) |
+| PUT | `/update-survey` | 更新问卷信息 | 是 | `surveyId`, `title`(可选), `description`(可选), `status`(可选) |
+| POST | `/publish-survey/:surveyId` | 发布问卷 | 是 | URL参数：`surveyId` |
+| POST | `/close-survey/:surveyId` | 关闭问卷 | 是 | URL参数：`surveyId` |
+| GET | `/survey/:surveyId` | 获取问卷（公开答题页） | 否 | URL参数：`surveyId` |
+| POST | `/add-question` | 添加题目 | 是 | `surveyId`, `questionId`, `title`, `type`, `required`(可选), `config`(可选) |
+| PUT | `/update-question` | 更新题目 | 是 | `surveyId`, `questionId`, `title`(可选), `required`(可选), `config`(可选) |
+| DELETE | `/delete-question` | 删除题目 | 是 | Body：`surveyId`, `questionId` |
+| POST | `/add-logic` | 添加跳转逻辑 | 是 | `surveyId`, `sourceQuestionId`, `conditions`, `targetQuestionId`, `priority`(可选) |
+| DELETE | `/delete-logic` | 删除跳转逻辑 | 是 | Body：`surveyId`, `questionId`, `logicIndex` |
+| POST | `/test-jump` | 测试跳转逻辑 | 否 | Body：`surveyId`, `currentQuestionId`, `answer` |
+| POST | `/submit-response` | 提交答卷 | 否 | Body：`surveyId`, `answers`, `respondentName`(可选), `isAnonymous`(可选) |
+| GET | `/survey-stats/:surveyId` | 获取问卷统计结果 | 是 | URL参数：`surveyId` |
+
+### 关键接口详解
+
+
+#### 1. 添加题目 `POST /api/add-question`
+- **请求参数说明**：
+  - `type` 可选值：`single_choice`, `multi_choice`, `text`, `number`
+  - `config` 根据类型不同包含不同字段：
+    - 单选/多选：`options`（数组，每项含 `value`, `label`）
+    - 多选额外：`minSelect`, `maxSelect`
+    - 文本：`minLength`, `maxLength`
+    - 数字：`minValue`, `maxValue`, `integerOnly`
+
+
+#### 2. 添加跳转逻辑 `POST /api/add-logic`
+- **支持的 conditions 类型**：
+  - `option_selected`：单选选中某个值
+  - `option_any`：多选答案中包含某个值
+  - `value_range`：数字在某个范围内（含边界）
+
+
+#### 3. 获取统计 `GET /api/survey-stats/:surveyId`
+- **响应结构**：
+  - 包含总答卷数 `totalResponses`
+  - 每道题的统计结果，根据题型不同：
+    - 单选：各选项计数
+    - 多选：各选项计数及总选择次数
+    - 文本：所有答案列表
+    - 数字：求和、平均值、最小值、最大值
 
 ## 七、测试用例
 
@@ -491,32 +569,15 @@ AI提供骨架，核心逻辑自己完成
 
 ## 十、遇到的问题
 
-### 问题1：文本问题0当作未设置，没有校验最大值必须大于最小值
+### 问题1：文本题允许将 0 当作“未设置”；文本题和数字题没有校验 minLength > maxLength，导致用户可能配置出无法填写的题目
 
-解决：
+**解决方案**：  
+1. **在添加/更新题目时增加范围合理性校验**（见`/api/add-question` 和 `/api/update-question`）：
 
----
-
-### 问题2：跳转逻辑调试困难，出错时信息不清晰，无法查看已有跳转规则
-
-解决：
-
+3. **空值处理**：空值直接跳过类型校验，避免将数字 `0` 误判为“未设置”。数字 `0` 会被当作有效值进行范围校验。
 
 ---
 
-## 十一、总结
 
-整个项目实现下来，核心收获主要在两点：
-
-* 对 MongoDB 文档模型的理解更清晰
-* 学会用“数据结构”来驱动逻辑，而不是写死代码
-
-虽然系统功能不算复杂，但结构已经具备扩展能力，比如后续可以继续增加：
-
-* 分页统计
-* 图表展示
-* 更复杂的跳转规则
-
----
 
 
