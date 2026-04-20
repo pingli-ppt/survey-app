@@ -92,14 +92,15 @@ router.get("/my-questions", authMiddleware, async (req, res) => {
   }
 });
 
-// ========== 3. 获取共享题目 ==========
+// ========== 3. 获取共享题目（其他用户公开或专门分享给我的） ==========
 router.get("/shared-questions", authMiddleware, async (req, res) => {
   try {
     const questions = await QuestionBank.find({
       $or: [
         { isPublic: true },
         { sharedWith: req.user._id }
-      ]
+      ],
+      ownerId: { $ne: req.user._id }
     }).sort({ createdAt: -1 });
     
     const result = [];
@@ -108,8 +109,7 @@ router.get("/shared-questions", authMiddleware, async (req, res) => {
         baseId: q.baseId, 
         version: q.currentVersion 
       });
-      if (latestVersion && q.ownerId.toString() !== req.user._id.toString()) {
-        // 获取所有者信息
+      if (latestVersion) {
         const owner = await User.findById(q.ownerId).select("username");
         result.push({
           baseId: q.baseId,
@@ -302,7 +302,7 @@ router.post("/:baseId/restore/:version", authMiddleware, async (req, res) => {
   }
 });
 
-// ========== 7. 分享题目 ==========
+// ========== 7. 分享题目（设置公开或分享给特定用户） ==========
 router.post("/:baseId/share", authMiddleware, async (req, res) => {
   try {
     const { baseId } = req.params;
@@ -321,9 +321,12 @@ router.post("/:baseId/share", authMiddleware, async (req, res) => {
       questionBank.isPublic = isPublic;
     }
     
-    if (userIds && Array.isArray(userIds)) {
-      questionBank.sharedWith.push(...userIds);
-      questionBank.sharedWith = [...new Set(questionBank.sharedWith.map(id => id.toString()))];
+    if (userIds && Array.isArray(userIds) && userIds.length > 0) {
+      for (const userId of userIds) {
+        if (!questionBank.sharedWith.includes(userId)) {
+          questionBank.sharedWith.push(userId);
+        }
+      }
     }
     
     await questionBank.save();
@@ -342,7 +345,55 @@ router.post("/:baseId/share", authMiddleware, async (req, res) => {
   }
 });
 
-// ========== 8. 查看题目使用情况（带详细统计数据） ==========
+// ========== 8. 获取可分享用户列表 ==========
+router.get("/shareable-users", authMiddleware, async (req, res) => {
+  try {
+    // 获取除了自己以外的所有用户
+    const users = await User.find({ _id: { $ne: req.user._id } })
+      .select("username _id")
+      .limit(50);
+    
+    res.json({
+      success: true,
+      users: users.map(u => ({ id: u._id, username: u.username }))
+    });
+  } catch (err) {
+    console.error("获取用户列表错误:", err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ========== 9. 取消分享（移除特定用户的访问权限） ==========
+router.delete("/:baseId/share/:userId", authMiddleware, async (req, res) => {
+  try {
+    const { baseId, userId } = req.params;
+    
+    const questionBank = await QuestionBank.findOne({ baseId });
+    if (!questionBank) {
+      return res.status(404).json({ error: "题目不存在" });
+    }
+    
+    if (questionBank.ownerId.toString() !== req.user._id.toString()) {
+      return res.status(403).json({ error: "只有所有者可以管理分享" });
+    }
+    
+    questionBank.sharedWith = questionBank.sharedWith.filter(
+      id => id.toString() !== userId
+    );
+    await questionBank.save();
+    
+    res.json({
+      success: true,
+      message: "已取消分享",
+      data: { sharedWith: questionBank.sharedWith }
+    });
+  } catch (err) {
+    console.error("取消分享错误:", err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ========== 10. 获取题目使用情况 ==========
 router.get("/:baseId/usage", authMiddleware, async (req, res) => {
   try {
     const { baseId } = req.params;
@@ -360,16 +411,13 @@ router.get("/:baseId/usage", authMiddleware, async (req, res) => {
     const usages = await QuestionUsage.find({ baseId })
       .populate("surveyId", "surveyId title status");
     
-    // 获取所有版本
     const versions = await QuestionVersion.find({ baseId }).sort({ version: 1 });
     
-    // 收集所有相关问卷的回答数据
     const surveyIds = usages.map(u => u.surveyId._id);
     const responses = await Response.find({ 
       surveyId: { $in: surveyIds } 
     });
     
-    // 按版本统计回答数据
     const versionStats = {};
     for (const version of versions) {
       versionStats[version.version] = {
@@ -392,7 +440,7 @@ router.get("/:baseId/usage", authMiddleware, async (req, res) => {
       }
     }
     
-    // 计算每个版本的详细统计
+    // 计算详细统计
     for (const [verNum, stats] of Object.entries(versionStats)) {
       const version = versions.find(v => v.version === parseInt(verNum));
       if (stats.answers.length > 0) {
@@ -475,7 +523,123 @@ router.get("/:baseId/usage", authMiddleware, async (req, res) => {
   }
 });
 
-// ========== 9. 更新题目版本（编辑现有版本） ==========
+// ========== 11. 跨问卷统计 ==========
+router.get("/:baseId/cross-stats", authMiddleware, async (req, res) => {
+  try {
+    const { baseId } = req.params;
+    
+    const questionBank = await QuestionBank.findOne({ baseId });
+    if (!questionBank) {
+      return res.status(404).json({ error: "题目不存在" });
+    }
+    
+    const isOwner = questionBank.ownerId.toString() === req.user._id.toString();
+    if (!isOwner) {
+      return res.status(403).json({ error: "只有所有者可以查看跨问卷统计" });
+    }
+    
+    const versions = await QuestionVersion.find({ baseId }).sort({ version: 1 });
+    const usages = await QuestionUsage.find({ baseId });
+    const surveyIds = usages.map(u => u.surveyId);
+    const responses = await Response.find({ 
+      surveyId: { $in: surveyIds } 
+    });
+    
+    const versionStats = {};
+    for (const version of versions) {
+      versionStats[version.version] = {
+        versionId: version.versionId,
+        title: version.title,
+        type: version.type,
+        config: version.config,
+        totalResponses: 0,
+        answers: []
+      };
+    }
+    
+    for (const response of responses) {
+      for (const answer of response.answers) {
+        const version = versions.find(v => v.versionId === answer.questionId);
+        if (version) {
+          versionStats[version.version].totalResponses++;
+          versionStats[version.version].answers.push(answer.value);
+        }
+      }
+    }
+    
+    // 计算每个版本的详细统计
+    for (const [verNum, stats] of Object.entries(versionStats)) {
+      const version = versions.find(v => v.version === parseInt(verNum));
+      if (stats.answers.length > 0) {
+        if (version.type === "number") {
+          const numbers = stats.answers.filter(v => !isNaN(Number(v))).map(v => Number(v));
+          stats.summary = {
+            avg: numbers.length ? (numbers.reduce((a,b) => a+b, 0) / numbers.length).toFixed(2) : null,
+            min: numbers.length ? Math.min(...numbers) : null,
+            max: numbers.length ? Math.max(...numbers) : null,
+            count: numbers.length,
+            allValues: numbers
+          };
+        } else if (version.type === "single_choice" && version.config?.options) {
+          const counts = {};
+          version.config.options.forEach(opt => {
+            counts[opt.value] = { label: opt.label, count: 0, percentage: 0 };
+          });
+          stats.answers.forEach(ans => {
+            if (counts[ans]) counts[ans].count++;
+          });
+          const total = stats.answers.length;
+          for (const key in counts) {
+            counts[key].percentage = total > 0 ? ((counts[key].count / total) * 100).toFixed(1) : 0;
+          }
+          stats.summary = counts;
+        } else if (version.type === "multi_choice" && version.config?.options) {
+          const counts = {};
+          version.config.options.forEach(opt => {
+            counts[opt.value] = { label: opt.label, count: 0, percentage: 0 };
+          });
+          let totalSelections = 0;
+          stats.answers.forEach(ans => {
+            if (Array.isArray(ans)) {
+              ans.forEach(v => {
+                if (counts[v]) counts[v].count++;
+                totalSelections++;
+              });
+            }
+          });
+          for (const key in counts) {
+            counts[key].percentage = totalSelections > 0 ? ((counts[key].count / totalSelections) * 100).toFixed(1) : 0;
+          }
+          stats.summary = {
+            options: counts,
+            totalSelections: totalSelections,
+            totalRespondents: stats.answers.length,
+            avgPerPerson: (totalSelections / stats.answers.length).toFixed(1)
+          };
+        } else if (version.type === "text") {
+          stats.summary = {
+            answers: stats.answers,
+            count: stats.answers.length
+          };
+        }
+      }
+    }
+    
+    res.json({
+      success: true,
+      data: {
+        baseId,
+        currentVersion: questionBank.currentVersion,
+        versions: versionStats
+      }
+    });
+  } catch (err) {
+    console.error("跨问卷统计错误:", err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ========== 12. 更新题目版本（创建新版本） ==========
 router.put("/:baseId/update-version", authMiddleware, async (req, res) => {
   try {
     const { baseId } = req.params;
@@ -499,7 +663,6 @@ router.put("/:baseId/update-version", authMiddleware, async (req, res) => {
       return res.status(404).json({ error: "当前版本不存在" });
     }
     
-    // 创建新版本
     const newVersion = questionBank.currentVersion + 1;
     const versionId = QuestionVersion.generateVersionId(baseId, newVersion);
     
@@ -535,12 +698,10 @@ router.put("/:baseId/update-version", authMiddleware, async (req, res) => {
   }
 });
 
-// ========== 10. 从题库选题创建问卷 ==========
+// ========== 13. 从题库选题创建问卷 ==========
 router.post("/create-survey-from-bank", authMiddleware, async (req, res) => {
   try {
     const { title, description, allowAnonymous, allowMultipleSubmit, deadline, selectedQuestions } = req.body;
-    
-    console.log("收到创建问卷请求:", { title, selectedCount: selectedQuestions?.length });
     
     if (!title) {
       return res.status(400).json({ error: "问卷标题不能为空" });
@@ -606,8 +767,6 @@ router.post("/create-survey-from-bank", authMiddleware, async (req, res) => {
       { _id: req.user._id },
       { $push: { survey_ids: survey._id } }
     );
-    
-    console.log("问卷创建成功:", surveyId);
     
     res.json({
       success: true,

@@ -18,22 +18,36 @@
             gap: 15px;
         }
         .header h1 { font-size: 24px; }
-        .nav-links { display: flex; gap: 15px; }
-        .nav-links a { color: white; text-decoration: none; padding: 8px 16px; border-radius: 8px; background: rgba(255,255,255,0.2); }
+        .nav-links { display: flex; gap: 15px; flex-wrap: wrap; }
+        .nav-links a { color: white; text-decoration: none; padding: 8px 16px; border-radius: 8px; background: rgba(255,255,255,0.2); transition: background 0.3s; }
+        .nav-links a:hover { background: rgba(255,255,255,0.3); }
         .container { max-width: 1200px; margin: 0 auto; padding: 30px 20px; }
-        .actions-bar { margin-bottom: 30px; display: flex; gap: 15px; }
-        .btn { padding: 12px 24px; border: none; border-radius: 8px; cursor: pointer; font-size: 14px; font-weight: 500; }
+        .actions-bar { margin-bottom: 30px; display: flex; gap: 15px; flex-wrap: wrap; }
+        .btn { padding: 12px 24px; border: none; border-radius: 8px; cursor: pointer; font-size: 14px; font-weight: 500; transition: all 0.3s; }
         .btn-primary { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; }
+        .btn-primary:hover { transform: translateY(-2px); box-shadow: 0 4px 12px rgba(102,126,234,0.4); }
         .btn-secondary { background: #6c757d; color: white; }
-        .question-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(350px, 1fr)); gap: 20px; }
-        .question-card { background: white; border-radius: 12px; padding: 20px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
-        .question-title { font-size: 18px; font-weight: 600; color: #333; margin-bottom: 10px; }
+        .btn-secondary:hover { background: #5a6268; }
+        .question-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(380px, 1fr)); gap: 20px; }
+        .question-card {
+            background: white;
+            border-radius: 12px;
+            padding: 20px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            transition: transform 0.2s;
+        }
+        .question-card:hover { transform: translateY(-4px); box-shadow: 0 8px 25px rgba(0,0,0,0.15); }
+        .question-title { font-size: 18px; font-weight: 600; color: #333; margin-bottom: 10px; word-break: break-word; }
         .question-meta { display: flex; gap: 10px; margin-bottom: 15px; font-size: 12px; color: #999; flex-wrap: wrap; }
         .question-type { background: #e9ecef; padding: 2px 8px; border-radius: 4px; }
+        .share-badge { background: #17a2b8; color: white; padding: 2px 8px; border-radius: 12px; font-size: 10px; }
+        .public-badge { background: #28a745; color: white; padding: 2px 8px; border-radius: 12px; font-size: 10px; }
         .question-actions { display: flex; gap: 10px; margin-top: 15px; flex-wrap: wrap; }
-        .question-actions button { flex: 1; padding: 8px 12px; border: none; border-radius: 6px; cursor: pointer; font-size: 12px; }
+        .question-actions button { flex: 1; padding: 8px 12px; border: none; border-radius: 6px; cursor: pointer; font-size: 12px; transition: opacity 0.2s; }
+        .question-actions button:hover { opacity: 0.85; }
         .btn-outline { background: #e9ecef; color: #495057; }
         .btn-edit { background: #ffc107; color: #333; }
+        .btn-share { background: #17a2b8; color: white; }
         .modal {
             display: none;
             position: fixed;
@@ -50,7 +64,7 @@
             background: white;
             padding: 30px;
             border-radius: 12px;
-            max-width: 500px;
+            max-width: 550px;
             width: 90%;
             max-height: 80vh;
             overflow-y: auto;
@@ -78,9 +92,35 @@
             100% { opacity: 0; transform: translateY(20px); }
         }
         .tabs { display: flex; gap: 10px; margin-bottom: 20px; border-bottom: 2px solid #eee; }
-        .tab { padding: 10px 20px; cursor: pointer; color: #666; }
+        .tab { padding: 10px 20px; cursor: pointer; color: #666; transition: all 0.3s; }
         .tab.active { color: #667eea; border-bottom: 2px solid #667eea; }
-        .owner-info { font-size: 11px; color: #28a745; margin-top: 5px; }
+        .shared-users-list { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+        .shared-user-tag {
+            background: #e9ecef;
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 13px;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .remove-share { cursor: pointer; color: #dc3545; font-weight: bold; }
+        .share-warning {
+            background: #fff3cd;
+            padding: 10px;
+            border-radius: 8px;
+            margin: 10px 0;
+            font-size: 13px;
+            color: #856404;
+        }
+        .flex-row { display: flex; gap: 10px; align-items: center; }
+        .flex-row select { flex: 1; }
+        hr { margin: 15px 0; border: none; border-top: 1px solid #eee; }
+        @media (max-width: 768px) {
+            .question-grid { grid-template-columns: 1fr; }
+            .actions-bar { flex-direction: column; }
+            .question-actions button { font-size: 11px; }
+        }
     </style>
 </head>
 <body>
@@ -157,6 +197,17 @@
         </div>
     </div>
     
+    <!-- 分享管理模态框 -->
+    <div id="shareModal" class="modal">
+        <div class="modal-content">
+            <h2>🔗 分享题目</h2>
+            <div id="shareModalContent"></div>
+            <div style="margin-top: 20px; display: flex; gap: 10px;">
+                <button onclick="closeShareModal()" style="flex:1; padding:10px; background:#6c757d; color:white; border:none; border-radius:8px; cursor:pointer;">关闭</button>
+            </div>
+        </div>
+    </div>
+    
     <script>
         const API_BASE = '/api';
         const token = localStorage.getItem('token');
@@ -167,6 +218,8 @@
         
         let currentTab = 'my';
         let currentEditBaseId = null;
+        let currentShareBaseId = null;
+        let currentShareTitle = '';
         
         function showToast(message, isError = false) {
             const toast = document.createElement('div');
@@ -262,11 +315,13 @@
                             <div class="question-meta">
                                 <span class="question-type">${getTypeName(q.type)}</span>
                                 <span>v${q.currentVersion}</span>
-                                <span>使用 ${q.usageCount || 0} 次</span>
+                                <span>📊 使用 ${q.usageCount || 0} 次</span>
                                 ${q.ownerName ? `<span>👤 ${escapeHtml(q.ownerName)}</span>` : ''}
+                                ${q.isPublic ? '<span class="public-badge">🌍 公开</span>' : ''}
                             </div>
                             <div class="question-actions">
-                                ${isOwner ? `<button class="btn-edit" onclick="editQuestion('${q.baseId}')">✏️ 编辑/新建版本</button>` : ''}
+                                ${isOwner ? `<button class="btn-edit" onclick="editQuestion('${q.baseId}')">✏️ 编辑/新版本</button>` : ''}
+                                ${isOwner ? `<button class="btn-share" onclick="showShareModal('${q.baseId}', '${escapeHtml(q.title)}', ${q.isPublic})">🔗 分享</button>` : ''}
                                 <button class="btn-outline" onclick="viewVersions('${q.baseId}')">📜 版本历史</button>
                                 <button class="btn-outline" onclick="viewUsage('${q.baseId}')">📊 使用情况</button>
                             </div>
@@ -439,7 +494,208 @@
             window.location.href = `/question-usage.html?baseId=${baseId}`;
         }
         
-        // 创建题目表单提交
+        // ========== 分享功能 ==========
+        async function showShareModal(baseId, title, isPublic) {
+            currentShareBaseId = baseId;
+            currentShareTitle = title;
+            
+            let usersHtml = '<div style="margin: 10px 0; color: #999;">加载用户列表中...</div>';
+            let sharedWithHtml = '<div style="margin: 10px 0; color: #999;">加载中...</div>';
+            
+            try {
+                // 获取题目详情
+                const questionRes = await fetch(`${API_BASE}/questions/${baseId}`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                const questionData = await questionRes.json();
+                const sharedUserIds = questionData.data.sharedWith || [];
+                
+                // 获取可分享的用户列表
+                const usersRes = await fetch(`${API_BASE}/questions/shareable-users`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                const usersData = await usersRes.json();
+                
+                if (usersData.success && usersData.users && usersData.users.length > 0) {
+                    usersHtml = `
+                        <div class="form-group">
+                            <label>分享给指定用户</label>
+                            <div class="flex-row">
+                                <select id="shareUserSelect">
+                                    <option value="">选择用户</option>
+                                    ${usersData.users.map(u => `<option value="${u.id}">${escapeHtml(u.username)}</option>`).join('')}
+                                </select>
+                                <button class="btn-primary" onclick="addSharedUser()" style="padding: 8px 16px;">添加</button>
+                            </div>
+                        </div>
+                    `;
+                } else {
+                    usersHtml = '<div style="margin: 10px 0; color: #999;">暂无其他用户</div>';
+                }
+                
+                // 已分享的用户列表
+                if (sharedUserIds.length > 0) {
+                    // 获取用户名
+                    const sharedUsers = [];
+                    for (const uid of sharedUserIds) {
+                        const userRes = await fetch(`${API_BASE}/users/${uid}`, {
+                            headers: { 'Authorization': `Bearer ${token}` }
+                        }).catch(() => null);
+                        if (userRes && userRes.ok) {
+                            const userData = await userRes.json();
+                            sharedUsers.push({ id: uid, username: userData.username });
+                        } else {
+                            sharedUsers.push({ id: uid, username: uid.substring(0, 8) });
+                        }
+                    }
+                    
+                    sharedWithHtml = `
+                        <div class="form-group">
+                            <label>已分享给以下用户：</label>
+                            <div class="shared-users-list">
+                                ${sharedUsers.map(u => `
+                                    <span class="shared-user-tag">
+                                        👤 ${escapeHtml(u.username)}
+                                        <span class="remove-share" onclick="removeSharedUser('${u.id}')">✕</span>
+                                    </span>
+                                `).join('')}
+                            </div>
+                        </div>
+                    `;
+                } else {
+                    sharedWithHtml = '<div class="form-group"><label>已分享给以下用户：</label><div style="color:#999;">暂无</div></div>';
+                }
+                
+            } catch (err) {
+                console.error('加载数据失败:', err);
+                usersHtml = '<div style="margin: 10px 0; color: #999;">加载失败</div>';
+                sharedWithHtml = '<div style="margin: 10px 0; color: #999;">加载失败</div>';
+            }
+            
+            document.getElementById('shareModalContent').innerHTML = `
+                <div style="margin-bottom: 20px; padding: 10px; background: #f8f9fa; border-radius: 8px;">
+                    <strong>题目：</strong> ${escapeHtml(currentShareTitle)}
+                </div>
+                
+                <div class="form-group">
+                    <label>
+                        <input type="checkbox" id="sharePublic" ${isPublic ? 'checked' : ''} onchange="togglePublicShare()">
+                        🌍 公开分享（所有人可见）
+                    </label>
+                    <div style="font-size: 12px; color: #666; margin-top: 5px;">
+                        公开后，所有用户都可以在"共享题目"中看到并使用此题
+                    </div>
+                </div>
+                
+                <div id="publicShareWarning" class="share-warning" style="display: ${isPublic ? 'block' : 'none'};">
+                    ⚠️ 当前题目已公开，所有人都可以使用
+                </div>
+                
+                <hr>
+                
+                <h3 style="font-size: 16px; margin-bottom: 10px;">👥 指定用户分享</h3>
+                ${usersHtml}
+                ${sharedWithHtml}
+                
+                <div style="margin-top: 20px;">
+                    <button class="btn-primary" onclick="saveShareSettings()" style="width:100%;">保存分享设置</button>
+                </div>
+            `;
+            
+            document.getElementById('shareModal').style.display = 'flex';
+        }
+        
+        function togglePublicShare() {
+            const isChecked = document.getElementById('sharePublic')?.checked;
+            const warning = document.getElementById('publicShareWarning');
+            if (warning) {
+                warning.style.display = isChecked ? 'block' : 'none';
+            }
+        }
+        
+        async function addSharedUser() {
+            const select = document.getElementById('shareUserSelect');
+            const userId = select.value;
+            if (!userId) {
+                showToast('请选择用户', true);
+                return;
+            }
+            
+            try {
+                const res = await fetch(`${API_BASE}/questions/${currentShareBaseId}/share`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${token}`
+                    },
+                    body: JSON.stringify({ userIds: [userId] })
+                });
+                
+                const data = await res.json();
+                if (data.success) {
+                    showToast('分享成功');
+                    showShareModal(currentShareBaseId, currentShareTitle, document.getElementById('sharePublic')?.checked);
+                } else {
+                    showToast(data.error || '分享失败', true);
+                }
+            } catch (err) {
+                showToast('分享失败: ' + err.message, true);
+            }
+        }
+        
+        async function removeSharedUser(userId) {
+            try {
+                const res = await fetch(`${API_BASE}/questions/${currentShareBaseId}/share/${userId}`, {
+                    method: 'DELETE',
+                    headers: {
+                        'Authorization': `Bearer ${token}`
+                    }
+                });
+                
+                const data = await res.json();
+                if (data.success) {
+                    showToast('已取消分享');
+                    showShareModal(currentShareBaseId, currentShareTitle, document.getElementById('sharePublic')?.checked);
+                } else {
+                    showToast(data.error || '操作失败', true);
+                }
+            } catch (err) {
+                showToast('操作失败: ' + err.message, true);
+            }
+        }
+        
+        async function saveShareSettings() {
+            const isPublic = document.getElementById('sharePublic')?.checked || false;
+            
+            try {
+                const res = await fetch(`${API_BASE}/questions/${currentShareBaseId}/share`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${token}`
+                    },
+                    body: JSON.stringify({ isPublic: isPublic })
+                });
+                
+                const data = await res.json();
+                if (data.success) {
+                    showToast('分享设置已保存');
+                    closeShareModal();
+                    loadQuestions();
+                } else {
+                    showToast(data.error || '保存失败', true);
+                }
+            } catch (err) {
+                showToast('保存失败: ' + err.message, true);
+            }
+        }
+        
+        function closeShareModal() {
+            document.getElementById('shareModal').style.display = 'none';
+            currentShareBaseId = null;
+        }
+        
+        // ========== 创建题目表单提交 ==========
         document.getElementById('createForm').addEventListener('submit', async (e) => {
             e.preventDefault();
             
@@ -513,7 +769,7 @@
             }
         });
         
-        // 编辑题目表单提交（创建新版本）
+        // ========== 编辑题目表单提交（创建新版本） ==========
         document.getElementById('editForm').addEventListener('submit', async (e) => {
             e.preventDefault();
             
@@ -521,11 +777,8 @@
             
             const title = document.getElementById('editTitle').value;
             const changeNote = document.getElementById('editChangeNote').value;
-            const typeSelect = document.querySelector('#editModal select');
-            
-            // 获取题型（需要从原始数据中获取）
-            let type = 'text';
             let config = {};
+            let type = 'text';
             
             // 根据当前编辑的配置字段推断题型
             const hasOptions = document.getElementById('editOptions');
@@ -620,11 +873,14 @@
             window.location.href = '/';
         }
         
+        // 点击模态框外部关闭
         window.onclick = function(event) {
             const createModal = document.getElementById('createModal');
             const editModal = document.getElementById('editModal');
+            const shareModal = document.getElementById('shareModal');
             if (event.target === createModal) closeModal();
             if (event.target === editModal) closeEditModal();
+            if (event.target === shareModal) closeShareModal();
         }
         
         // 初始化
