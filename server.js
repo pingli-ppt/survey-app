@@ -368,129 +368,167 @@ app.put("/api/update-survey", authMiddleware, async (req, res) => {
   }
 });
 
-app.post("/api/add-question", authMiddleware, async (req, res) => {
+// ========== 跳转逻辑 API ==========
+
+// 获取问卷的跳转逻辑配置
+app.get("/api/survey-logic/:surveyId", authMiddleware, async (req, res) => {
   try {
-    const { surveyId, questionId, title, type, required, config } = req.body;
-    
-    const survey = await Survey.findOne({ surveyId, creatorId: req.user._id });
-    if (!survey) {
-      return res.status(404).json({ error: "问卷不存在或无权限" });
-    }
-    
-    if (survey.questions.some(q => q.questionId === questionId)) {
-      return res.status(400).json({ error: "题目ID已存在" });
-    }
-    
-    survey.questions.push({
-      questionId,
-      title: title || questionId,
-      type,
-      required: required || false,
-      order: survey.questions.length,
-      config: config || {}
+    const survey = await Survey.findOne({ 
+      surveyId: req.params.surveyId, 
+      creatorId: req.user._id 
     });
     
-    await survey.save();
-    res.json({ success: true, message: "题目添加成功" });
+    if (!survey) {
+      return res.status(404).json({ error: "问卷不存在" });
+    }
+    
+    const QuestionVersion = require("./models/QuestionVersion");
+    const logicConfig = {};
+    
+    for (const q of survey.questions) {
+      if (q.logic && q.logic.rules && q.logic.rules.length > 0) {
+        const version = await QuestionVersion.findOne({ versionId: q.versionId });
+        logicConfig[q.versionId] = {
+          title: version ? version.title : q.versionId,
+          type: version ? version.type : 'text',
+          rules: q.logic.rules,
+          defaultTarget: q.logic.defaultTarget || null
+        };
+      }
+    }
+    
+    res.json({ success: true, logic: logicConfig });
   } catch (err) {
-    console.error("添加题目错误:", err);
+    console.error("获取跳转逻辑错误:", err);
     res.status(500).json({ error: err.message });
   }
 });
 
-app.post("/api/add-logic", authMiddleware, async (req, res) => {
+// 保存跳转逻辑
+app.post("/api/save-logic", authMiddleware, async (req, res) => {
   try {
-    const { surveyId, sourceQuestionId, conditions, targetQuestionId, priority } = req.body;
+    const { surveyId, sourceQuestionId, rules, defaultTarget } = req.body;
     
     const survey = await Survey.findOne({ surveyId, creatorId: req.user._id });
     if (!survey) {
       return res.status(404).json({ error: "问卷不存在或无权限" });
     }
     
-    const question = survey.questions.find(q => q.questionId === sourceQuestionId);
-    if (!question) {
-      return res.status(404).json({ error: "源题目不存在" });
-    }
-    
-    if (!survey.questions.some(q => q.questionId === targetQuestionId)) {
-      return res.status(404).json({ error: "目标题目不存在" });
-    }
-    
-    question.logic = question.logic || [];
-    question.logic.push({
-      conditions,
-      targetQuestionId,
-      priority: priority || question.logic.length + 1
-    });
-    
-    await survey.save();
-    
-    res.json({ success: true, message: "跳转逻辑添加成功" });
-  } catch (err) {
-    console.error("添加跳转逻辑错误:", err);
-    res.status(500).json({ error: err.message });
-  }
-});
-
-app.delete("/api/delete-question", authMiddleware, async (req, res) => {
-  try {
-    const { surveyId, questionId } = req.body;
-    
-    const survey = await Survey.findOne({ surveyId, creatorId: req.user._id });
-    if (!survey) {
-      return res.status(404).json({ error: "问卷不存在或无权限" });
-    }
-    
-    const questionIndex = survey.questions.findIndex(q => q.questionId === questionId);
-    if (questionIndex === -1) {
-      return res.status(404).json({ error: "题目不存在" });
-    }
-    
-    survey.questions.splice(questionIndex, 1);
-    
-    survey.questions.forEach((q, idx) => {
-      q.order = idx;
-    });
-    
-    await survey.save();
-    
-    res.json({ success: true, message: "题目删除成功" });
-  } catch (err) {
-    console.error("删除题目错误:", err);
-    res.status(500).json({ error: err.message });
-  }
-});
-
-app.delete("/api/delete-logic", authMiddleware, async (req, res) => {
-  try {
-    const { surveyId, questionId, logicIndex } = req.body;
-    
-    const survey = await Survey.findOne({ surveyId, creatorId: req.user._id });
-    if (!survey) {
-      return res.status(404).json({ error: "问卷不存在或无权限" });
-    }
-    
-    const question = survey.questions.find(q => q.questionId === questionId);
+    const question = survey.questions.find(q => q.versionId === sourceQuestionId);
     if (!question) {
       return res.status(404).json({ error: "题目不存在" });
     }
     
-    if (!question.logic || logicIndex >= question.logic.length) {
+    question.logic = {
+      rules: rules || [],
+      defaultTarget: defaultTarget || null
+    };
+    
+    await survey.save();
+    
+    res.json({ success: true, message: "跳转逻辑保存成功" });
+  } catch (err) {
+    console.error("保存跳转逻辑错误:", err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// 删除跳转规则
+app.delete("/api/delete-logic-rule", authMiddleware, async (req, res) => {
+  try {
+    const { surveyId, sourceQuestionId, ruleIndex } = req.body;
+    
+    const survey = await Survey.findOne({ surveyId, creatorId: req.user._id });
+    if (!survey) {
+      return res.status(404).json({ error: "问卷不存在或无权限" });
+    }
+    
+    const question = survey.questions.find(q => q.versionId === sourceQuestionId);
+    if (!question || !question.logic) {
       return res.status(404).json({ error: "跳转逻辑不存在" });
     }
     
-    question.logic.splice(logicIndex, 1);
-    
+    question.logic.rules.splice(ruleIndex, 1);
     await survey.save();
     
-    res.json({ success: true, message: "跳转逻辑删除成功" });
+    res.json({ success: true, message: "规则删除成功" });
   } catch (err) {
-    console.error("删除跳转逻辑错误:", err);
+    console.error("删除跳转规则错误:", err);
     res.status(500).json({ error: err.message });
   }
 });
 
-// 获取问卷详情（新版）
+// 测试跳转逻辑（用于填写问卷时）
+app.post("/api/test-jump", async (req, res) => {
+  try {
+    const { surveyId, currentQuestionId, answer } = req.body;
+    
+    const survey = await Survey.findOne({ surveyId });
+    if (!survey) {
+      return res.status(404).json({ error: "问卷不存在" });
+    }
+    
+    const currentQ = survey.questions.find(q => q.versionId === currentQuestionId);
+    if (!currentQ || !currentQ.logic || !currentQ.logic.rules || currentQ.logic.rules.length === 0) {
+      return res.json({ success: true, nextQuestionId: null });
+    }
+    
+    let nextId = null;
+    const sortedRules = [...currentQ.logic.rules].sort((a, b) => (a.priority || 0) - (b.priority || 0));
+    
+    for (const rule of sortedRules) {
+      let match = false;
+      
+      if (rule.type === "single_choice") {
+        match = (String(answer) === String(rule.optionValue));
+      } 
+      else if (rule.type === "multi_choice") {
+        if (Array.isArray(answer)) {
+          match = answer.includes(rule.optionValue);
+        } else {
+          match = (String(answer) === String(rule.optionValue));
+        }
+      }
+      else if (rule.type === "number_range") {
+        const num = Number(answer);
+        if (!isNaN(num)) {
+          if (rule.min !== undefined && rule.max !== undefined) {
+            match = (num >= rule.min && num <= rule.max);
+          } else if (rule.min !== undefined) {
+            match = (num >= rule.min);
+          } else if (rule.max !== undefined) {
+            match = (num <= rule.max);
+          }
+        }
+      }
+      else if (rule.type === "number_equals") {
+        const num = Number(answer);
+        match = (!isNaN(num) && num === rule.value);
+      }
+      else if (rule.type === "text_contains") {
+        const str = String(answer).toLowerCase();
+        match = str.includes(String(rule.keyword).toLowerCase());
+      }
+      
+      if (match) {
+        nextId = rule.targetQuestionId;
+        break;
+      }
+    }
+    
+    // 如果没有匹配任何规则，使用默认跳转
+    if (!nextId && currentQ.logic.defaultTarget) {
+      nextId = currentQ.logic.defaultTarget;
+    }
+    
+    res.json({ success: true, nextQuestionId: nextId });
+  } catch (err) {
+    console.error("跳转测试错误:", err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// 获取问卷详情（填写页面使用）
 app.get("/api/survey/:surveyId", async (req, res) => {
   try {
     const survey = await Survey.findOne({ surveyId: req.params.surveyId });
@@ -509,12 +547,14 @@ app.get("/api/survey/:surveyId", async (req, res) => {
           title: version.title,
           type: version.type,
           required: true,
-          config: version.config || {}
+          config: version.config || {},
+          order: sq.order
         });
-      } else {
-        console.warn(`版本不存在: ${sq.versionId}`);
       }
     }
+    
+    // 按 order 排序
+    questions.sort((a, b) => (a.order || 0) - (b.order || 0));
     
     res.json({
       success: true,
@@ -560,44 +600,6 @@ app.post("/api/submit-response", async (req, res) => {
     res.json({ success: true, message: "提交成功", responseId: response.responseId });
   } catch (err) {
     console.error("提交答卷错误:", err);
-    res.status(500).json({ error: err.message });
-  }
-});
-
-app.post("/api/test-jump", async (req, res) => {
-  try {
-    const { surveyId, currentQuestionId, answer } = req.body;
-    
-    const survey = await Survey.findOne({ surveyId });
-    if (!survey) {
-      return res.status(404).json({ error: "问卷不存在" });
-    }
-    
-    const currentQ = survey.questions.find(q => q.questionId === currentQuestionId);
-    if (!currentQ || !currentQ.logic?.length) {
-      return res.json({ success: true, nextQuestionId: null });
-    }
-    
-    let nextId = null;
-    for (const rule of currentQ.logic) {
-      let match = true;
-      for (const cond of rule.conditions) {
-        if (cond.type === "option_selected") {
-          if (answer !== cond.optionValue) match = false;
-        } else if (cond.type === "value_range") {
-          const num = Number(answer);
-          if (isNaN(num) || num < cond.min || num > cond.max) match = false;
-        }
-      }
-      if (match) {
-        nextId = rule.targetQuestionId;
-        break;
-      }
-    }
-    
-    res.json({ success: true, nextQuestionId: nextId });
-  } catch (err) {
-    console.error("跳转测试错误:", err);
     res.status(500).json({ error: err.message });
   }
 });

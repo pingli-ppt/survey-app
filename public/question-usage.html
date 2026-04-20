@@ -113,9 +113,6 @@
             color: #856404;
             font-size: 14px;
         }
-        .warning-box li {
-            margin: 5px 0;
-        }
         .success-box {
             background: #d4edda;
             border-left: 4px solid #28a745;
@@ -176,9 +173,6 @@
             font-size: 13px;
             text-decoration: underline;
         }
-        .btn-link:hover {
-            color: #5a67d8;
-        }
         .empty-state {
             text-align: center;
             padding: 50px;
@@ -220,6 +214,76 @@
             border-radius: 4px;
             font-family: monospace;
             font-size: 12px;
+        }
+        .stats-detail {
+            background: #f8f9fa;
+            border-radius: 12px;
+            padding: 20px;
+            margin-top: 20px;
+        }
+        .stats-detail h3 {
+            margin-bottom: 15px;
+            color: #333;
+        }
+        .option-bar {
+            margin: 10px 0;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+        .option-label {
+            width: 150px;
+            font-size: 14px;
+        }
+        .bar {
+            flex: 1;
+            min-width: 150px;
+            height: 30px;
+            background: #e9ecef;
+            border-radius: 15px;
+            overflow: hidden;
+        }
+        .bar-fill {
+            height: 100%;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            display: flex;
+            align-items: center;
+            justify-content: flex-end;
+            padding-right: 10px;
+            color: white;
+            font-size: 12px;
+        }
+        .option-count {
+            width: 80px;
+            text-align: right;
+            font-size: 14px;
+            color: #666;
+        }
+        .answers-list {
+            max-height: 300px;
+            overflow-y: auto;
+            background: white;
+            padding: 15px;
+            border-radius: 8px;
+            border: 1px solid #eee;
+        }
+        .answer-item {
+            padding: 8px;
+            border-bottom: 1px solid #eee;
+            font-family: monospace;
+        }
+        .version-selector {
+            margin-bottom: 20px;
+            display: flex;
+            gap: 10px;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+        .version-selector select {
+            padding: 8px 12px;
+            border-radius: 8px;
+            border: 1px solid #ddd;
         }
         @media (max-width: 768px) {
             .survey-table {
@@ -263,6 +327,8 @@
         }
         
         let currentBaseId = null;
+        let currentData = null;
+        let selectedVersion = null;
         
         function getUrlParams() {
             const params = {};
@@ -345,7 +411,11 @@
                     throw new Error(usageData.error || '获取使用情况失败');
                 }
                 
-                renderPage(questionData.data, usageData.data);
+                currentData = {
+                    questionInfo: questionData.data,
+                    usageInfo: usageData.data
+                };
+                renderPage();
             } catch (err) {
                 document.getElementById('content').innerHTML = `
                     <div class="card">
@@ -356,12 +426,41 @@
             }
         }
         
-        function renderPage(questionInfo, usageInfo) {
+        function renderPage() {
+            const questionInfo = currentData.questionInfo;
+            const usageInfo = currentData.usageInfo;
             const surveys = usageInfo.surveys || [];
             const totalUsage = usageInfo.totalUsage || 0;
             const totalResponses = surveys.reduce((sum, s) => sum + (s.responseCount || 0), 0);
             
             const currentVersion = questionInfo.versions?.find(v => v.version === questionInfo.currentVersion);
+            const versions = questionInfo.versions || [];
+            
+            // 构建版本选择器
+            const versionOptions = versions.map(v => `
+                <option value="${v.version}" ${v.version === questionInfo.currentVersion ? 'selected' : ''}>
+                    v${v.version} - ${v.title.substring(0, 30)}${v.title.length > 30 ? '...' : ''}
+                </option>
+            `).join('');
+            
+            // 获取选中版本的详细统计
+            const selectedVer = selectedVersion || questionInfo.currentVersion;
+            const versionStats = usageInfo.versions ? usageInfo.versions[selectedVer] : null;
+            
+            // 渲染详细统计
+            let detailedStatsHtml = '';
+            if (versionStats && versionStats.detailedStats) {
+                detailedStatsHtml = renderDetailedStats(versionStats);
+            } else if (versionStats && versionStats.totalResponses > 0) {
+                detailedStatsHtml = `
+                    <div class="stats-detail">
+                        <h3>📊 详细统计</h3>
+                        <div style="padding: 20px; text-align: center; color: #999;">
+                            正在加载统计数据...
+                        </div>
+                    </div>
+                `;
+            }
             
             const warningHtml = totalUsage > 0 ? `
                 <div class="warning-box">
@@ -420,21 +519,20 @@
                 </div>
             `;
             
-            const versionsInfo = questionInfo.versions || [];
-            const versionSummary = versionsInfo.length > 1 ? `
+            const versionSummary = versions.length > 1 ? `
                 <div class="card">
                     <h2>📜 版本信息</h2>
                     <div style="display: flex; flex-wrap: wrap; gap: 10px; align-items: center;">
-                        ${versionsInfo.map(v => `
+                        ${versions.map(v => `
                             <span style="padding: 5px 12px; background: ${v.version === questionInfo.currentVersion ? '#667eea' : '#e9ecef'}; color: ${v.version === questionInfo.currentVersion ? 'white' : '#666'}; border-radius: 20px; font-size: 13px;">
                                 v${v.version}
                                 ${v.version === questionInfo.currentVersion ? '(当前)' : ''}
                             </span>
-                            ${v.version < versionsInfo.length ? '<span>→</span>' : ''}
+                            ${v.version < versions.length ? '<span>→</span>' : ''}
                         `).join('')}
                     </div>
                     <p style="margin-top: 15px; font-size: 13px; color: #666;">
-                        💡 当前使用版本为 v${questionInfo.currentVersion}，共有 ${versionsInfo.length} 个版本
+                        💡 当前使用版本为 v${questionInfo.currentVersion}，共有 ${versions.length} 个版本
                     </p>
                 </div>
             ` : '';
@@ -478,8 +576,124 @@
                 
                 ${warningHtml}
                 ${versionSummary}
+                
+                <div class="card">
+                    <h2>📊 各版本详细统计数据</h2>
+                    <div class="version-selector">
+                        <label>选择版本查看详情：</label>
+                        <select id="versionSelect" onchange="changeVersion()">
+                            ${versionOptions}
+                        </select>
+                    </div>
+                    <div id="detailedStatsContainer">
+                        ${detailedStatsHtml || '<div style="padding: 40px; text-align: center; color: #999;">暂无该版本的回答数据</div>'}
+                    </div>
+                </div>
+                
                 ${surveysHtml}
             `;
+        }
+        
+        function renderDetailedStats(versionStats) {
+            const stats = versionStats.detailedStats;
+            const type = versionStats.type;
+            
+            if (type === 'number') {
+                return `
+                    <div class="stats-detail">
+                        <h3>📊 数字题统计 (共 ${stats.count} 条回答)</h3>
+                        <div style="display: flex; gap: 20px; flex-wrap: wrap; margin-bottom: 20px;">
+                            <div style="background: #e9ecef; padding: 15px; border-radius: 8px; flex: 1; text-align: center;">
+                                <div style="font-size: 12px; color: #666;">平均值</div>
+                                <div style="font-size: 24px; font-weight: bold;">${stats.avg || '-'}</div>
+                            </div>
+                            <div style="background: #e9ecef; padding: 15px; border-radius: 8px; flex: 1; text-align: center;">
+                                <div style="font-size: 12px; color: #666;">最小值</div>
+                                <div style="font-size: 24px; font-weight: bold;">${stats.min !== null ? stats.min : '-'}</div>
+                            </div>
+                            <div style="background: #e9ecef; padding: 15px; border-radius: 8px; flex: 1; text-align: center;">
+                                <div style="font-size: 12px; color: #666;">最大值</div>
+                                <div style="font-size: 24px; font-weight: bold;">${stats.max !== null ? stats.max : '-'}</div>
+                            </div>
+                        </div>
+                        <div class="answers-list">
+                            <div style="font-weight: 500; margin-bottom: 10px;">所有填写值：</div>
+                            ${stats.allValues && stats.allValues.length ? 
+                                stats.allValues.map(v => `<div class="answer-item">🔢 ${v}</div>`).join('') : 
+                                '<div style="color:#999;">暂无数据</div>'}
+                        </div>
+                    </div>
+                `;
+            } else if (type === 'single_choice') {
+                const total = versionStats.totalResponses || 1;
+                return `
+                    <div class="stats-detail">
+                        <h3>📊 单选题统计 (共 ${versionStats.totalResponses} 条回答)</h3>
+                        ${Object.entries(stats).map(([value, opt]) => {
+                            const percent = total > 0 ? ((opt.count / total) * 100).toFixed(1) : 0;
+                            return `
+                                <div class="option-bar">
+                                    <div class="option-label">${escapeHtml(opt.label)}</div>
+                                    <div class="bar">
+                                        <div class="bar-fill" style="width: ${percent}%">${percent}%</div>
+                                    </div>
+                                    <div class="option-count">${opt.count} 人</div>
+                                </div>
+                            `;
+                        }).join('')}
+                    </div>
+                `;
+            } else if (type === 'multi_choice') {
+                return `
+                    <div class="stats-detail">
+                        <h3>📊 多选题统计</h3>
+                        <div style="margin-bottom: 15px;">
+                            <strong>总回答人数: ${stats.totalRespondents}</strong> | 
+                            <strong>总选择次数: ${stats.totalSelections}</strong> | 
+                            <strong>人均选择: ${stats.avgPerPerson} 项</strong>
+                        </div>
+                        ${Object.entries(stats.options).map(([value, opt]) => {
+                            const percent = parseFloat(opt.percentage);
+                            return `
+                                <div class="option-bar">
+                                    <div class="option-label">${escapeHtml(opt.label)}</div>
+                                    <div class="bar">
+                                        <div class="bar-fill" style="width: ${percent}%">${percent}%</div>
+                                    </div>
+                                    <div class="option-count">${opt.count} 次</div>
+                                </div>
+                            `;
+                        }).join('')}
+                    </div>
+                `;
+            } else if (type === 'text') {
+                return `
+                    <div class="stats-detail">
+                        <h3>📊 文本题统计 (共 ${stats.count} 条回答)</h3>
+                        <div class="answers-list">
+                            ${stats.answers && stats.answers.length ? 
+                                stats.answers.map(ans => `<div class="answer-item">📝 ${escapeHtml(String(ans))}</div>`).join('') : 
+                                '<div style="color:#999;padding:20px;text-align:center;">暂无回答</div>'}
+                        </div>
+                    </div>
+                `;
+            }
+            return '<div style="padding: 40px; text-align: center; color: #999;">暂无统计数据</div>';
+        }
+        
+        function changeVersion() {
+            const select = document.getElementById('versionSelect');
+            selectedVersion = parseInt(select.value);
+            const versionStats = currentData.usageInfo.versions ? currentData.usageInfo.versions[selectedVersion] : null;
+            
+            const container = document.getElementById('detailedStatsContainer');
+            if (versionStats && versionStats.detailedStats) {
+                container.innerHTML = renderDetailedStats(versionStats);
+            } else if (versionStats && versionStats.totalResponses > 0) {
+                container.innerHTML = '<div style="padding: 40px; text-align: center; color: #999;">加载统计数据中...</div>';
+            } else {
+                container.innerHTML = '<div style="padding: 40px; text-align: center; color: #999;">该版本暂无回答数据</div>';
+            }
         }
         
         function viewSurvey(surveyId) {

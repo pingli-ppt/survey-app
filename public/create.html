@@ -139,6 +139,9 @@
         .question-check {
             width: 24px;
             height: 24px;
+            text-align: center;
+            font-weight: bold;
+            color: #28a745;
         }
         .selected-questions {
             background: #f8f9fa;
@@ -183,6 +186,11 @@
             display: flex;
             gap: 15px;
             margin-top: 20px;
+        }
+        .owner-badge {
+            font-size: 11px;
+            color: #28a745;
+            margin-left: 8px;
         }
     </style>
 </head>
@@ -326,10 +334,15 @@
             
             container.innerHTML = questions.map(q => {
                 const isSelected = selectedQuestions.some(sq => sq.baseId === q.baseId);
+                // 显示所有者信息（如果是共享题目）
+                const ownerInfo = q.ownerName ? `<span class="owner-badge">👤 ${escapeHtml(q.ownerName)}</span>` : '';
                 return `
                     <div class="question-item ${isSelected ? 'selected' : ''}" onclick="toggleSelectQuestion('${q.baseId}', '${escapeHtml(q.title)}', '${q.type}')">
                         <div class="question-info">
-                            <div class="question-title">${escapeHtml(q.title)}</div>
+                            <div class="question-title">
+                                ${escapeHtml(q.title)}
+                                ${ownerInfo}
+                            </div>
                             <div class="question-meta">
                                 ${getTypeName(q.type)} | v${q.currentVersion} | 使用 ${q.usageCount || 0} 次
                             </div>

@@ -28,11 +28,12 @@
         .question-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(350px, 1fr)); gap: 20px; }
         .question-card { background: white; border-radius: 12px; padding: 20px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
         .question-title { font-size: 18px; font-weight: 600; color: #333; margin-bottom: 10px; }
-        .question-meta { display: flex; gap: 10px; margin-bottom: 15px; font-size: 12px; color: #999; }
+        .question-meta { display: flex; gap: 10px; margin-bottom: 15px; font-size: 12px; color: #999; flex-wrap: wrap; }
         .question-type { background: #e9ecef; padding: 2px 8px; border-radius: 4px; }
-        .question-actions { display: flex; gap: 10px; margin-top: 15px; }
-        .question-actions button { flex: 1; padding: 8px 12px; border: none; border-radius: 6px; cursor: pointer; font-size: 13px; }
+        .question-actions { display: flex; gap: 10px; margin-top: 15px; flex-wrap: wrap; }
+        .question-actions button { flex: 1; padding: 8px 12px; border: none; border-radius: 6px; cursor: pointer; font-size: 12px; }
         .btn-outline { background: #e9ecef; color: #495057; }
+        .btn-edit { background: #ffc107; color: #333; }
         .modal {
             display: none;
             position: fixed;
@@ -79,6 +80,7 @@
         .tabs { display: flex; gap: 10px; margin-bottom: 20px; border-bottom: 2px solid #eee; }
         .tab { padding: 10px 20px; cursor: pointer; color: #666; }
         .tab.active { color: #667eea; border-bottom: 2px solid #667eea; }
+        .owner-info { font-size: 11px; color: #28a745; margin-top: 5px; }
     </style>
 </head>
 <body>
@@ -126,9 +128,32 @@
                     </select>
                 </div>
                 <div id="configFields"></div>
+                <div class="form-group">
+                    <label><input type="checkbox" id="isPublic"> 公开分享（其他用户可使用）</label>
+                </div>
                 <button type="submit" class="btn btn-primary" style="width:100%">创建题目</button>
             </form>
             <button onclick="closeModal()" style="margin-top:10px;width:100%;padding:10px;background:#6c757d;color:white;border:none;border-radius:8px;cursor:pointer;">取消</button>
+        </div>
+    </div>
+    
+    <!-- 编辑题目模态框 -->
+    <div id="editModal" class="modal">
+        <div class="modal-content">
+            <h2>✏️ 编辑题目 - 创建新版本</h2>
+            <form id="editForm">
+                <div class="form-group">
+                    <label>题目标题 *</label>
+                    <input type="text" id="editTitle" required>
+                </div>
+                <div class="form-group">
+                    <label>修改说明</label>
+                    <input type="text" id="editChangeNote" placeholder="例如：修改了选项内容">
+                </div>
+                <div id="editConfigFields"></div>
+                <button type="submit" class="btn btn-primary" style="width:100%">创建新版本</button>
+            </form>
+            <button onclick="closeEditModal()" style="margin-top:10px;width:100%;padding:10px;background:#6c757d;color:white;border:none;border-radius:8px;cursor:pointer;">取消</button>
         </div>
     </div>
     
@@ -141,6 +166,7 @@
         }
         
         let currentTab = 'my';
+        let currentEditBaseId = null;
         
         function showToast(message, isError = false) {
             const toast = document.createElement('div');
@@ -221,8 +247,8 @@
             if (!questions || questions.length === 0) {
                 container.innerHTML = `
                     <div class="empty-state">
-                        <p>暂无题目</p>
-                        <button class="btn btn-primary" onclick="showCreateModal()">创建第一个题目</button>
+                        <p>${isOwner ? '暂无题目，点击下方按钮创建第一个题目' : '暂无共享题目'}</p>
+                        ${isOwner ? '<button class="btn btn-primary" onclick="showCreateModal()">创建第一个题目</button>' : ''}
                     </div>
                 `;
                 return;
@@ -237,8 +263,10 @@
                                 <span class="question-type">${getTypeName(q.type)}</span>
                                 <span>v${q.currentVersion}</span>
                                 <span>使用 ${q.usageCount || 0} 次</span>
+                                ${q.ownerName ? `<span>👤 ${escapeHtml(q.ownerName)}</span>` : ''}
                             </div>
                             <div class="question-actions">
+                                ${isOwner ? `<button class="btn-edit" onclick="editQuestion('${q.baseId}')">✏️ 编辑/新建版本</button>` : ''}
                                 <button class="btn-outline" onclick="viewVersions('${q.baseId}')">📜 版本历史</button>
                                 <button class="btn-outline" onclick="viewUsage('${q.baseId}')">📊 使用情况</button>
                             </div>
@@ -248,7 +276,7 @@
             `;
         }
         
-        // 根据题型动态生成配置字段
+        // 根据题型动态生成配置字段（创建题目）
         function updateConfigFields() {
             const type = document.getElementById('qType').value;
             const container = document.getElementById('configFields');
@@ -309,13 +337,98 @@
             document.getElementById('createForm').reset();
             document.getElementById('configFields').innerHTML = '';
             document.getElementById('createModal').style.display = 'flex';
-            // 设置默认题型为文本题，并生成对应配置字段
             document.getElementById('qType').value = 'text';
             updateConfigFields();
         }
         
         function closeModal() {
             document.getElementById('createModal').style.display = 'none';
+        }
+        
+        // 编辑题目
+        async function editQuestion(baseId) {
+            currentEditBaseId = baseId;
+            try {
+                const res = await fetch(`${API_BASE}/questions/${baseId}`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                const data = await res.json();
+                
+                if (data.success && data.data.current) {
+                    const current = data.data.current;
+                    document.getElementById('editTitle').value = current.title;
+                    document.getElementById('editChangeNote').value = '';
+                    generateEditConfigFields(current.type, current.config);
+                    document.getElementById('editModal').style.display = 'flex';
+                } else {
+                    showToast('获取题目信息失败', true);
+                }
+            } catch (err) {
+                showToast('获取题目信息失败: ' + err.message, true);
+            }
+        }
+        
+        function generateEditConfigFields(type, currentConfig) {
+            const container = document.getElementById('editConfigFields');
+            if (!container) return;
+            
+            if (type === 'text') {
+                container.innerHTML = `
+                    <div class="form-group">
+                        <label>最小长度</label>
+                        <input type="number" id="editMinLength" value="${currentConfig?.minLength || 0}">
+                    </div>
+                    <div class="form-group">
+                        <label>最大长度</label>
+                        <input type="number" id="editMaxLength" value="${currentConfig?.maxLength || 500}">
+                    </div>
+                `;
+            } else if (type === 'number') {
+                container.innerHTML = `
+                    <div class="form-group">
+                        <label>最小值</label>
+                        <input type="number" id="editMinValue" value="${currentConfig?.minValue !== undefined ? currentConfig.minValue : ''}">
+                    </div>
+                    <div class="form-group">
+                        <label>最大值</label>
+                        <input type="number" id="editMaxValue" value="${currentConfig?.maxValue !== undefined ? currentConfig.maxValue : ''}">
+                    </div>
+                    <div class="form-group">
+                        <label><input type="checkbox" id="editIntegerOnly" ${currentConfig?.integerOnly ? 'checked' : ''}> 只能整数</label>
+                    </div>
+                `;
+            } else if (type === 'single_choice') {
+                const optionsText = (currentConfig?.options || []).map(opt => `${opt.value}|${opt.label}`).join('\n');
+                container.innerHTML = `
+                    <div class="form-group">
+                        <label>选项（每行一个，格式：值|标签）</label>
+                        <textarea id="editOptions" rows="4" placeholder="male|男&#10;female|女">${escapeHtml(optionsText)}</textarea>
+                    </div>
+                `;
+            } else if (type === 'multi_choice') {
+                const optionsText = (currentConfig?.options || []).map(opt => `${opt.value}|${opt.label}`).join('\n');
+                container.innerHTML = `
+                    <div class="form-group">
+                        <label>选项（每行一个，格式：值|标签）</label>
+                        <textarea id="editOptions" rows="4">${escapeHtml(optionsText)}</textarea>
+                    </div>
+                    <div class="form-group">
+                        <label>最少选择数量</label>
+                        <input type="number" id="editMinSelect" value="${currentConfig?.minSelect || 1}">
+                    </div>
+                    <div class="form-group">
+                        <label>最多选择数量</label>
+                        <input type="number" id="editMaxSelect" value="${currentConfig?.maxSelect || 3}">
+                    </div>
+                `;
+            } else {
+                container.innerHTML = '';
+            }
+        }
+        
+        function closeEditModal() {
+            document.getElementById('editModal').style.display = 'none';
+            currentEditBaseId = null;
         }
         
         function viewVersions(baseId) {
@@ -332,6 +445,7 @@
             
             const title = document.getElementById('qTitle').value;
             const type = document.getElementById('qType').value;
+            const isPublic = document.getElementById('isPublic')?.checked || false;
             let config = {};
             
             if (type === 'text') {
@@ -355,6 +469,10 @@
                         const [value, label] = line.split('|');
                         return { value: value?.trim() || '', label: label?.trim() || value?.trim() || '' };
                     });
+                if (options.length === 0) {
+                    showToast('请至少添加一个选项', true);
+                    return;
+                }
                 config = { options };
             } else if (type === 'multi_choice') {
                 const optionsText = document.getElementById('options')?.value || '';
@@ -364,8 +482,12 @@
                         const [value, label] = line.split('|');
                         return { value: value?.trim() || '', label: label?.trim() || value?.trim() || '' };
                     });
+                if (options.length === 0) {
+                    showToast('请至少添加一个选项', true);
+                    return;
+                }
                 const minSelect = parseInt(document.getElementById('minSelect')?.value || 1);
-                const maxSelect = parseInt(document.getElementById('maxSelect')?.value || 3);
+                const maxSelect = parseInt(document.getElementById('maxSelect')?.value || options.length);
                 config = { options, minSelect, maxSelect };
             }
             
@@ -376,7 +498,7 @@
                         'Content-Type': 'application/json',
                         'Authorization': `Bearer ${token}`
                     },
-                    body: JSON.stringify({ title, type, config, changeNote: '创建题目' })
+                    body: JSON.stringify({ title, type, config, isPublic, changeNote: '创建题目' })
                 });
                 const data = await res.json();
                 if (data.success) {
@@ -388,6 +510,87 @@
                 }
             } catch (err) {
                 showToast('创建失败: ' + err.message, true);
+            }
+        });
+        
+        // 编辑题目表单提交（创建新版本）
+        document.getElementById('editForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            if (!currentEditBaseId) return;
+            
+            const title = document.getElementById('editTitle').value;
+            const changeNote = document.getElementById('editChangeNote').value;
+            const typeSelect = document.querySelector('#editModal select');
+            
+            // 获取题型（需要从原始数据中获取）
+            let type = 'text';
+            let config = {};
+            
+            // 根据当前编辑的配置字段推断题型
+            const hasOptions = document.getElementById('editOptions');
+            const hasMinLength = document.getElementById('editMinLength');
+            const hasMinValue = document.getElementById('editMinValue');
+            
+            if (hasOptions) {
+                const optionsText = document.getElementById('editOptions')?.value || '';
+                const options = optionsText.split('\n')
+                    .filter(line => line.trim())
+                    .map(line => {
+                        const [value, label] = line.split('|');
+                        return { value: value?.trim() || '', label: label?.trim() || value?.trim() || '' };
+                    });
+                if (options.length === 0) {
+                    showToast('请至少添加一个选项', true);
+                    return;
+                }
+                
+                const minSelect = document.getElementById('editMinSelect');
+                if (minSelect) {
+                    type = 'multi_choice';
+                    config = { 
+                        options, 
+                        minSelect: parseInt(minSelect.value) || 1,
+                        maxSelect: parseInt(document.getElementById('editMaxSelect')?.value || options.length)
+                    };
+                } else {
+                    type = 'single_choice';
+                    config = { options };
+                }
+            } else if (hasMinLength) {
+                type = 'text';
+                config = {
+                    minLength: parseInt(document.getElementById('editMinLength')?.value || 0),
+                    maxLength: parseInt(document.getElementById('editMaxLength')?.value || 500)
+                };
+            } else if (hasMinValue !== null) {
+                type = 'number';
+                config = {
+                    minValue: parseFloat(document.getElementById('editMinValue')?.value) || undefined,
+                    maxValue: parseFloat(document.getElementById('editMaxValue')?.value) || undefined,
+                    integerOnly: document.getElementById('editIntegerOnly')?.checked || false
+                };
+            }
+            
+            try {
+                const res = await fetch(`${API_BASE}/questions/${currentEditBaseId}/update-version`, {
+                    method: 'PUT',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${token}`
+                    },
+                    body: JSON.stringify({ title, type, config, changeNote })
+                });
+                const data = await res.json();
+                if (data.success) {
+                    showToast(data.message);
+                    closeEditModal();
+                    loadQuestions();
+                } else {
+                    showToast(data.error, true);
+                }
+            } catch (err) {
+                showToast('创建新版本失败: ' + err.message, true);
             }
         });
         
@@ -418,8 +621,10 @@
         }
         
         window.onclick = function(event) {
-            const modal = document.getElementById('createModal');
-            if (event.target === modal) closeModal();
+            const createModal = document.getElementById('createModal');
+            const editModal = document.getElementById('editModal');
+            if (event.target === createModal) closeModal();
+            if (event.target === editModal) closeEditModal();
         }
         
         // 初始化

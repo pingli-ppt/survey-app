@@ -43,16 +43,30 @@
             padding: 10px;
             border-radius: 8px;
             cursor: pointer;
+            transition: background 0.2s;
         }
         .option-item:hover { background: #f8f9fa; }
-        .option-item input { width: 18px; height: 18px; cursor: pointer; }
-        .option-item label { flex: 1; cursor: pointer; font-size: 15px; color: #333; }
+        .option-item input[type="radio"],
+        .option-item input[type="checkbox"] {
+            width: 18px;
+            height: 18px;
+            cursor: pointer;
+            margin: 0;
+        }
+        .option-item label { 
+            flex: 1; 
+            cursor: pointer; 
+            font-size: 15px; 
+            color: #333;
+            margin: 0;
+        }
         .text-input, .number-input {
             width: 100%;
             padding: 12px;
             border: 1px solid #ddd;
             border-radius: 8px;
             font-size: 15px;
+            font-family: inherit;
         }
         .number-input { width: 200px; }
         .error-msg { color: #dc3545; font-size: 13px; margin-top: 8px; display: none; }
@@ -78,7 +92,9 @@
             border-radius: 8px;
             font-size: 16px;
             cursor: pointer;
+            transition: opacity 0.2s;
         }
+        .btn:hover { opacity: 0.9; }
         .btn-prev { background: #6c757d; color: white; }
         .btn-next { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; }
         .btn-submit { background: #28a745; color: white; }
@@ -88,6 +104,18 @@
         .success-icon { font-size: 64px; margin-bottom: 20px; }
         .success-page h2 { color: #28a745; margin-bottom: 15px; }
         .home-link { display: inline-block; margin-top: 20px; padding: 10px 20px; background: #667eea; color: white; text-decoration: none; border-radius: 8px; }
+        .jump-notice {
+            background: #fff3cd;
+            border-left: 4px solid #ffc107;
+            padding: 10px 15px;
+            margin-top: 15px;
+            border-radius: 8px;
+            font-size: 13px;
+            color: #856404;
+        }
+        @media (max-width: 768px) {
+            .number-input { width: 100%; }
+        }
     </style>
 </head>
 <body>
@@ -115,6 +143,7 @@
         let currentIndex = 0;
         let answers = {};
         let errorStates = {};
+        let visitedQuestions = [0];
         
         async function loadSurvey() {
             const params = getUrlParams();
@@ -140,6 +169,7 @@
                     surveyData.questionIndexMap[q.questionId] = idx;
                 });
                 
+                // 初始化答案
                 surveyData.questions.forEach(q => {
                     if (q.type === 'multi_choice') {
                         answers[q.questionId] = [];
@@ -147,6 +177,9 @@
                         answers[q.questionId] = '';
                     }
                 });
+                
+                visitedQuestions = [0];
+                currentIndex = 0;
                 
                 renderQuestionnaire();
             } catch (err) {
@@ -164,6 +197,10 @@
             const currentQ = surveyData.questions[currentIndex];
             const progress = ((currentIndex + 1) / totalQuestions) * 100;
             
+            const answeredCount = Object.values(answers).filter(v => 
+                v !== undefined && v !== null && v !== '' && !(Array.isArray(v) && v.length === 0)
+            ).length;
+            
             const html = `
                 <div class="survey-header">
                     <h1 class="survey-title">${escapeHtml(surveyData.title)}</h1>
@@ -176,20 +213,61 @@
                 <div class="progress-bar">
                     <div class="progress-fill" style="width: ${progress}%"></div>
                 </div>
-                <div class="progress-text">第 ${currentIndex + 1} / ${totalQuestions} 题</div>
+                <div class="progress-text">第 ${currentIndex + 1} / ${totalQuestions} 题 | 已完成 ${answeredCount} 题</div>
                 
                 ${renderQuestion(currentQ)}
                 
                 <div class="action-buttons">
-                    ${currentIndex > 0 ? '<button class="btn btn-prev" onclick="prevQuestion()">← 上一题</button>' : '<div></div>'}
-                    ${currentIndex < totalQuestions - 1 
-                        ? '<button class="btn btn-next" onclick="nextQuestion()">下一题 →</button>'
-                        : '<button class="btn btn-submit" onclick="submitSurvey()">✓ 提交问卷</button>'}
+                    ${visitedQuestions.length > 1 ? '<button class="btn btn-prev" onclick="prevQuestion()">← 上一题</button>' : '<div></div>'}
+                    <button class="btn-next" onclick="nextQuestion()" style="${visitedQuestions.length > 1 ? '' : 'width:100%'}">
+                        ${currentIndex < totalQuestions - 1 ? '下一题 →' : '✓ 提交问卷'}
+                    </button>
                 </div>
             `;
             
             document.getElementById('app').innerHTML = html;
-            restoreAnswer(currentQ);
+            
+            // 重新绑定事件和恢复值
+            setTimeout(() => {
+                restoreAnswer(currentQ);
+                bindQuestionEvents(currentQ);
+            }, 50);
+        }
+        
+        function bindQuestionEvents(question) {
+            if (question.type === 'single_choice') {
+                const radios = document.querySelectorAll(`input[name="q_${question.questionId}"]`);
+                radios.forEach(radio => {
+                    radio.onchange = function(e) {
+                        e.stopPropagation();
+                        saveAnswer(question.questionId, this.value);
+                    };
+                });
+            } else if (question.type === 'multi_choice') {
+                const checkboxes = document.querySelectorAll(`input[name="q_${question.questionId}"]`);
+                checkboxes.forEach(checkbox => {
+                    checkbox.onchange = function(e) {
+                        e.stopPropagation();
+                        const value = this.value;
+                        const checked = this.checked;
+                        toggleMultiChoice(question.questionId, value, checked);
+                    };
+                });
+            } else if (question.type === 'text') {
+                const input = document.getElementById(`text-${question.questionId}`);
+                if (input) {
+                    input.oninput = function(e) {
+                        saveAnswer(question.questionId, this.value);
+                    };
+                }
+            } else if (question.type === 'number') {
+                const input = document.getElementById(`number-${question.questionId}`);
+                if (input) {
+                    input.oninput = function(e) {
+                        saveAnswer(question.questionId, this.value);
+                    };
+                }
+            }
         }
         
         function renderQuestion(question) {
@@ -214,6 +292,11 @@
                     content = `<div style="color:red;">暂不支持的题型: ${question.type}</div>`;
             }
             
+            let jumpNotice = '';
+            if (question.logic && question.logic.rules && question.logic.rules.length > 0) {
+                jumpNotice = `<div class="jump-notice">🔗 根据您的回答，可能会跳转到其他题目</div>`;
+            }
+            
             return `
                 <div class="question-card ${errorClass}" id="question-card-${question.questionId}">
                     <div class="question-header">
@@ -223,6 +306,7 @@
                     </div>
                     ${content}
                     <div class="error-msg" id="error-${question.questionId}">${errorStates[question.questionId] || ''}</div>
+                    ${jumpNotice}
                 </div>
             `;
         }
@@ -232,16 +316,15 @@
             const currentValue = answers[question.questionId] || '';
             
             return `
-                <div class="options-group">
-                    ${options.map(opt => `
-                        <div class="option-item" onclick="document.getElementById('radio-${question.questionId}-${opt.value}').click()">
+                <div class="options-group" id="options-group-${question.questionId}">
+                    ${options.map((opt, idx) => `
+                        <div class="option-item" data-value="${escapeHtml(opt.value)}">
                             <input type="radio" 
                                    name="q_${question.questionId}" 
-                                   id="radio-${question.questionId}-${opt.value}"
+                                   id="radio-${question.questionId}-${idx}"
                                    value="${escapeHtml(opt.value)}"
-                                   ${currentValue === opt.value ? 'checked' : ''}
-                                   onchange="saveAnswer('${question.questionId}', this.value)">
-                            <label for="radio-${question.questionId}-${opt.value}">${escapeHtml(opt.label)}</label>
+                                   ${currentValue === opt.value ? 'checked' : ''}>
+                            <label for="radio-${question.questionId}-${idx}">${escapeHtml(opt.label)}</label>
                         </div>
                     `).join('')}
                 </div>
@@ -253,16 +336,15 @@
             const currentValues = answers[question.questionId] || [];
             
             return `
-                <div class="options-group">
-                    ${options.map(opt => `
-                        <div class="option-item" onclick="document.getElementById('checkbox-${question.questionId}-${opt.value}').click()">
+                <div class="options-group" id="options-group-${question.questionId}">
+                    ${options.map((opt, idx) => `
+                        <div class="option-item" data-value="${escapeHtml(opt.value)}">
                             <input type="checkbox" 
                                    name="q_${question.questionId}" 
-                                   id="checkbox-${question.questionId}-${opt.value}"
+                                   id="checkbox-${question.questionId}-${idx}"
                                    value="${escapeHtml(opt.value)}"
-                                   ${currentValues.includes(opt.value) ? 'checked' : ''}
-                                   onchange="toggleMultiChoice('${question.questionId}', '${escapeHtml(opt.value)}', this.checked)">
-                            <label for="checkbox-${question.questionId}-${opt.value}">${escapeHtml(opt.label)}</label>
+                                   ${currentValues.includes(opt.value) ? 'checked' : ''}>
+                            <label for="checkbox-${question.questionId}-${idx}">${escapeHtml(opt.label)}</label>
                         </div>
                     `).join('')}
                 </div>
@@ -278,8 +360,7 @@
                 <textarea class="text-input" 
                           id="text-${question.questionId}"
                           rows="4"
-                          placeholder="请输入您的回答..."
-                          oninput="saveAnswer('${question.questionId}', this.value)">${escapeHtml(currentValue)}</textarea>
+                          placeholder="请输入您的回答...">${escapeHtml(currentValue)}</textarea>
                 ${config.minLength || config.maxLength ? `<div style="font-size:12px;color:#999;margin-top:8px;">💡 ${config.minLength ? `最少${config.minLength}字符` : ''} ${config.maxLength ? `最多${config.maxLength}字符` : ''}</div>` : ''}
             `;
         }
@@ -294,7 +375,6 @@
                        id="number-${question.questionId}"
                        value="${escapeHtml(currentValue)}"
                        placeholder="请输入数字"
-                       oninput="saveAnswer('${question.questionId}', this.value)"
                        ${config.minValue !== undefined ? `min="${config.minValue}"` : ''}
                        ${config.maxValue !== undefined ? `max="${config.maxValue}"` : ''}
                        ${config.integerOnly ? 'step="1"' : ''}>
@@ -337,6 +417,7 @@
                 const input = document.getElementById(`number-${question.questionId}`);
                 if (input) input.value = value;
             }
+            // 单选和多选的值已经在HTML中通过checked属性设置了
         }
         
         function validateQuestion(questionId) {
@@ -412,12 +493,15 @@
             for (const q of surveyData.questions) {
                 if (!validateQuestion(q.questionId)) {
                     isValid = false;
+                    // 在错误题目上添加样式
+                    const card = document.getElementById(`question-card-${q.questionId}`);
+                    if (card) card.classList.add('error');
                 }
             }
             return isValid;
         }
         
-        function nextQuestion() {
+        async function nextQuestion() {
             const currentQ = surveyData.questions[currentIndex];
             if (!validateQuestion(currentQ.questionId)) {
                 const card = document.getElementById(`question-card-${currentQ.questionId}`);
@@ -425,16 +509,53 @@
                 return;
             }
 
-            if (currentIndex < surveyData.questions.length - 1) {
-                currentIndex++;
+            const currentAnswer = answers[currentQ.questionId];
+            let nextIndex = currentIndex + 1;
+            let jumped = false;
+            
+            try {
+                const jumpRes = await fetch(`${API_BASE}/test-jump`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        surveyId: surveyData.surveyId,
+                        currentQuestionId: currentQ.questionId,
+                        answer: currentAnswer
+                    })
+                });
+                
+                const jumpData = await jumpRes.json();
+                if (jumpData.success && jumpData.nextQuestionId) {
+                    const targetIndex = surveyData.questions.findIndex(q => q.questionId === jumpData.nextQuestionId);
+                    if (targetIndex !== -1 && targetIndex !== currentIndex) {
+                        nextIndex = targetIndex;
+                        jumped = true;
+                    }
+                }
+            } catch (err) {
+                console.error('跳转检查失败:', err);
+            }
+
+            if (nextIndex < surveyData.questions.length) {
+                currentIndex = nextIndex;
+                if (!jumped || visitedQuestions[visitedQuestions.length - 1] !== currentIndex) {
+                    visitedQuestions.push(currentIndex);
+                }
                 renderQuestionnaire();
                 window.scrollTo({ top: 0, behavior: 'smooth' });
+            } else {
+                if (validateAllQuestions()) {
+                    submitSurvey();
+                } else {
+                    alert('请先完成所有必填项并修正错误');
+                }
             }
         }
         
         function prevQuestion() {
-            if (currentIndex > 0) {
-                currentIndex--;
+            if (visitedQuestions.length > 1) {
+                visitedQuestions.pop();
+                currentIndex = visitedQuestions[visitedQuestions.length - 1];
                 renderQuestionnaire();
                 window.scrollTo({ top: 0, behavior: 'smooth' });
             }
@@ -454,6 +575,12 @@
                 value
             }));
             
+            const submitBtn = document.querySelector('.btn-submit, .btn-next');
+            if (submitBtn) {
+                submitBtn.disabled = true;
+                submitBtn.textContent = '提交中...';
+            }
+            
             try {
                 const res = await fetch(`${API_BASE}/submit-response`, {
                     method: 'POST',
@@ -472,9 +599,17 @@
                     renderSuccess();
                 } else {
                     alert('提交失败：' + (data.error || '未知错误'));
+                    if (submitBtn) {
+                        submitBtn.disabled = false;
+                        submitBtn.textContent = '✓ 提交问卷';
+                    }
                 }
             } catch (err) {
                 alert('网络错误：' + err.message);
+                if (submitBtn) {
+                    submitBtn.disabled = false;
+                    submitBtn.textContent = '✓ 提交问卷';
+                }
             }
         }
         

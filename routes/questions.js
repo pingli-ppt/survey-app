@@ -109,12 +109,15 @@ router.get("/shared-questions", authMiddleware, async (req, res) => {
         version: q.currentVersion 
       });
       if (latestVersion && q.ownerId.toString() !== req.user._id.toString()) {
+        // 获取所有者信息
+        const owner = await User.findById(q.ownerId).select("username");
         result.push({
           baseId: q.baseId,
           currentVersion: q.currentVersion,
           title: latestVersion.title,
           type: latestVersion.type,
           ownerId: q.ownerId,
+          ownerName: owner ? owner.username : "未知用户",
           isPublic: q.isPublic,
           usageCount: q.usageCount,
           createdAt: q.createdAt
@@ -339,7 +342,7 @@ router.post("/:baseId/share", authMiddleware, async (req, res) => {
   }
 });
 
-// ========== 8. 查看题目使用情况 ==========
+// ========== 8. 查看题目使用情况（带详细统计数据） ==========
 router.get("/:baseId/usage", authMiddleware, async (req, res) => {
   try {
     const { baseId } = req.params;
@@ -357,51 +360,22 @@ router.get("/:baseId/usage", authMiddleware, async (req, res) => {
     const usages = await QuestionUsage.find({ baseId })
       .populate("surveyId", "surveyId title status");
     
-    const surveys = usages.map(u => ({
-      surveyId: u.surveyId?.surveyId || "未知",
-      title: u.surveyId?.title || "未知",
-      status: u.surveyId?.status || "未知",
-      versionUsed: u.versionId,
-      responseCount: u.responseCount,
-      lastUsedAt: u.lastUsedAt
-    }));
-    
-    res.json({
-      success: true,
-      data: {
-        baseId,
-        totalUsage: usages.length,
-        surveys
-      }
-    });
-  } catch (err) {
-    console.error("查看使用情况错误:", err);
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// ========== 9. 跨问卷统计 ==========
-router.get("/:baseId/cross-stats", authMiddleware, async (req, res) => {
-  try {
-    const { baseId } = req.params;
-    
-    const questionBank = await QuestionBank.findOne({ baseId });
-    if (!questionBank) {
-      return res.status(404).json({ error: "题目不存在" });
-    }
-    
+    // 获取所有版本
     const versions = await QuestionVersion.find({ baseId }).sort({ version: 1 });
-    const usages = await QuestionUsage.find({ baseId });
-    const surveyIds = usages.map(u => u.surveyId);
+    
+    // 收集所有相关问卷的回答数据
+    const surveyIds = usages.map(u => u.surveyId._id);
     const responses = await Response.find({ 
       surveyId: { $in: surveyIds } 
     });
     
+    // 按版本统计回答数据
     const versionStats = {};
     for (const version of versions) {
       versionStats[version.version] = {
         versionId: version.versionId,
         title: version.title,
+        type: version.type,
         config: version.config,
         totalResponses: 0,
         answers: []
@@ -418,41 +392,57 @@ router.get("/:baseId/cross-stats", authMiddleware, async (req, res) => {
       }
     }
     
-    for (const [version, stats] of Object.entries(versionStats)) {
+    // 计算每个版本的详细统计
+    for (const [verNum, stats] of Object.entries(versionStats)) {
+      const version = versions.find(v => v.version === parseInt(verNum));
       if (stats.answers.length > 0) {
-        const firstVersion = versions.find(v => v.version === parseInt(version));
-        if (firstVersion.type === "number") {
+        if (version.type === "number") {
           const numbers = stats.answers.filter(v => !isNaN(Number(v))).map(v => Number(v));
-          stats.summary = {
+          stats.detailedStats = {
             avg: numbers.length ? (numbers.reduce((a,b) => a+b, 0) / numbers.length).toFixed(2) : null,
             min: numbers.length ? Math.min(...numbers) : null,
             max: numbers.length ? Math.max(...numbers) : null,
-            count: numbers.length
+            count: numbers.length,
+            allValues: numbers
           };
-        } else if (firstVersion.type === "single_choice" && firstVersion.config?.options) {
+        } else if (version.type === "single_choice" && version.config?.options) {
           const counts = {};
-          firstVersion.config.options.forEach(opt => {
-            counts[opt.value] = { label: opt.label, count: 0 };
+          version.config.options.forEach(opt => {
+            counts[opt.value] = { label: opt.label, count: 0, percentage: 0 };
           });
           stats.answers.forEach(ans => {
             if (counts[ans]) counts[ans].count++;
           });
-          stats.summary = counts;
-        } else if (firstVersion.type === "multi_choice") {
+          const total = stats.answers.length;
+          for (const key in counts) {
+            counts[key].percentage = total > 0 ? ((counts[key].count / total) * 100).toFixed(1) : 0;
+          }
+          stats.detailedStats = counts;
+        } else if (version.type === "multi_choice" && version.config?.options) {
           const counts = {};
-          firstVersion.config.options.forEach(opt => {
-            counts[opt.value] = { label: opt.label, count: 0 };
+          version.config.options.forEach(opt => {
+            counts[opt.value] = { label: opt.label, count: 0, percentage: 0 };
           });
+          let totalSelections = 0;
           stats.answers.forEach(ans => {
             if (Array.isArray(ans)) {
               ans.forEach(v => {
                 if (counts[v]) counts[v].count++;
+                totalSelections++;
               });
             }
           });
-          stats.summary = counts;
-        } else if (firstVersion.type === "text") {
-          stats.summary = {
+          for (const key in counts) {
+            counts[key].percentage = totalSelections > 0 ? ((counts[key].count / totalSelections) * 100).toFixed(1) : 0;
+          }
+          stats.detailedStats = {
+            options: counts,
+            totalSelections: totalSelections,
+            totalRespondents: stats.answers.length,
+            avgPerPerson: (totalSelections / stats.answers.length).toFixed(1)
+          };
+        } else if (version.type === "text") {
+          stats.detailedStats = {
             answers: stats.answers,
             count: stats.answers.length
           };
@@ -460,16 +450,87 @@ router.get("/:baseId/cross-stats", authMiddleware, async (req, res) => {
       }
     }
     
+    const surveys = usages.map(u => ({
+      surveyId: u.surveyId?.surveyId || "未知",
+      title: u.surveyId?.title || "未知",
+      status: u.surveyId?.status || "未知",
+      versionUsed: u.versionId,
+      responseCount: u.responseCount,
+      lastUsedAt: u.lastUsedAt
+    }));
+    
     res.json({
       success: true,
       data: {
         baseId,
-        currentVersion: questionBank.currentVersion,
-        versions: versionStats
+        totalUsage: usages.length,
+        surveys,
+        versions: versionStats,
+        currentVersion: questionBank.currentVersion
       }
     });
   } catch (err) {
-    console.error("跨问卷统计错误:", err);
+    console.error("查看使用情况错误:", err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ========== 9. 更新题目版本（编辑现有版本） ==========
+router.put("/:baseId/update-version", authMiddleware, async (req, res) => {
+  try {
+    const { baseId } = req.params;
+    const { title, config, changeNote } = req.body;
+    
+    const questionBank = await QuestionBank.findOne({ baseId });
+    if (!questionBank) {
+      return res.status(404).json({ error: "题目不存在" });
+    }
+    
+    if (questionBank.ownerId.toString() !== req.user._id.toString()) {
+      return res.status(403).json({ error: "只有所有者可以修改题目" });
+    }
+    
+    const currentVersionData = await QuestionVersion.findOne({ 
+      baseId, 
+      version: questionBank.currentVersion 
+    });
+    
+    if (!currentVersionData) {
+      return res.status(404).json({ error: "当前版本不存在" });
+    }
+    
+    // 创建新版本
+    const newVersion = questionBank.currentVersion + 1;
+    const versionId = QuestionVersion.generateVersionId(baseId, newVersion);
+    
+    const newVersionData = new QuestionVersion({
+      versionId,
+      baseId,
+      version: newVersion,
+      parentVersionId: currentVersionData.versionId,
+      title: title || currentVersionData.title,
+      type: currentVersionData.type,
+      config: config || currentVersionData.config,
+      changeNote: changeNote || `更新题目内容`,
+      createdBy: req.user._id
+    });
+    await newVersionData.save();
+    
+    questionBank.currentVersion = newVersion;
+    questionBank.updatedAt = new Date();
+    await questionBank.save();
+    
+    res.json({
+      success: true,
+      message: `题目已更新，新版本 v${newVersion}`,
+      data: {
+        newVersion,
+        versionId,
+        changeNote: changeNote || `更新题目内容`
+      }
+    });
+  } catch (err) {
+    console.error("更新题目版本错误:", err);
     res.status(500).json({ error: err.message });
   }
 });
@@ -509,7 +570,6 @@ router.post("/create-survey-from-bank", authMiddleware, async (req, res) => {
       questions: []
     });
     
-    // 添加题目关联
     for (let i = 0; i < selectedQuestions.length; i++) {
       const sq = selectedQuestions[i];
       const version = await QuestionVersion.findOne({ versionId: sq.versionId });
@@ -525,7 +585,6 @@ router.post("/create-survey-from-bank", authMiddleware, async (req, res) => {
         logic: null
       });
       
-      // 更新使用记录
       await QuestionUsage.updateOne(
         { versionId: sq.versionId, surveyId: survey._id },
         { 
@@ -535,7 +594,6 @@ router.post("/create-survey-from-bank", authMiddleware, async (req, res) => {
         { upsert: true }
       );
       
-      // 更新题目库使用计数
       await QuestionBank.updateOne(
         { baseId: version.baseId },
         { $inc: { usageCount: 1 }, $set: { updatedAt: new Date() } }
@@ -544,7 +602,6 @@ router.post("/create-survey-from-bank", authMiddleware, async (req, res) => {
     
     await survey.save();
     
-    // 更新用户问卷列表
     await User.updateOne(
       { _id: req.user._id },
       { $push: { survey_ids: survey._id } }

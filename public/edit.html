@@ -16,7 +16,7 @@
             padding: 20px;
         }
         .container {
-            max-width: 1000px;
+            max-width: 1200px;
             margin: 0 auto;
         }
         .header {
@@ -209,10 +209,107 @@
             border-radius: 6px;
             cursor: pointer;
         }
+        
+        /* 跳转逻辑样式 */
+        .logic-section {
+            margin-top: 15px;
+            padding-top: 15px;
+            border-top: 2px dashed #ddd;
+        }
+        .logic-title {
+            font-weight: 600;
+            margin-bottom: 10px;
+            color: #667eea;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .logic-rules {
+            background: #f8f9fa;
+            border-radius: 8px;
+            padding: 10px;
+            margin-top: 10px;
+        }
+        .logic-rule-item {
+            background: white;
+            border-radius: 8px;
+            padding: 12px;
+            margin-bottom: 10px;
+            border: 1px solid #e9ecef;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+        .rule-condition {
+            flex: 2;
+            font-size: 14px;
+        }
+        .rule-target {
+            flex: 1;
+            font-size: 14px;
+            color: #28a745;
+            font-weight: 500;
+        }
+        .delete-rule-btn {
+            background: #dc3545;
+            color: white;
+            border: none;
+            padding: 4px 10px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 12px;
+        }
+        .add-rule-btn {
+            background: #667eea;
+            color: white;
+            border: none;
+            padding: 6px 12px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 12px;
+            margin-top: 10px;
+        }
+        .rule-config {
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 8px;
+            margin-top: 10px;
+        }
+        .rule-config-row {
+            margin-bottom: 10px;
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+            align-items: center;
+        }
+        .rule-config-row label {
+            width: 100px;
+            margin-bottom: 0;
+        }
+        .rule-config-row select, .rule-config-row input {
+            flex: 1;
+            width: auto;
+        }
+        .logic-badge {
+            background: #e9ecef;
+            padding: 2px 8px;
+            border-radius: 12px;
+            font-size: 11px;
+            color: #666;
+        }
         @media (max-width: 768px) {
             .question-header {
                 flex-direction: column;
                 align-items: flex-start;
+            }
+            .rule-config-row {
+                flex-direction: column;
+                align-items: flex-start;
+            }
+            .rule-config-row label {
+                width: auto;
             }
         }
     </style>
@@ -228,6 +325,18 @@
         </div>
     </div>
 
+    <!-- 添加跳转规则模态框 -->
+    <div id="logicModal" class="modal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.5); justify-content:center; align-items:center; z-index:1000;">
+        <div style="background:white; border-radius:12px; padding:25px; max-width:500px; width:90%; max-height:80vh; overflow-y:auto;">
+            <h2>添加跳转规则</h2>
+            <div id="logicModalContent"></div>
+            <div style="margin-top:20px; display:flex; gap:10px;">
+                <button onclick="saveRule()" class="save-survey-btn" style="flex:1;">保存规则</button>
+                <button onclick="closeLogicModal()" style="flex:1; background:#6c757d; color:white; border:none; border-radius:8px; cursor:pointer;">取消</button>
+            </div>
+        </div>
+    </div>
+
     <script>
         const API_BASE = '/api';
         const token = localStorage.getItem('token');
@@ -237,6 +346,8 @@
         }
         
         let currentSurvey = null;
+        let currentLogicQuestion = null;
+        let editingRuleIndex = null;
         
         function getUrlParams() {
             const params = {};
@@ -301,16 +412,17 @@
                     <div class="question-item" data-qid="${q.questionId}">
                         <div class="question-header">
                             <div>
-                                <span class="question-id">${escapeHtml(q.questionId)}</span>
+                                <span class="question-id">${escapeHtml(q.title)}</span>
                                 <span class="question-type">${getTypeName(q.type)}</span>
-                                ${q.required ? '<span style="color:red;">*必填</span>' : ''}
+                                ${q.logic && q.logic.rules && q.logic.rules.length > 0 ? '<span class="logic-badge">🔗 有跳转规则</span>' : ''}
                             </div>
                             <div>
-                                <button class="delete-btn" onclick="deleteQuestion('${q.questionId}')">删除</button>
+                                <button class="delete-btn" onclick="deleteQuestion('${q.questionId}')">移除题目</button>
                             </div>
                         </div>
                         <div><strong>标题:</strong> ${escapeHtml(q.title)}</div>
                         ${renderQuestionConfig(q)}
+                        ${renderLogicSection(q)}
                     </div>
                 `).join('')
                 : '<div style="text-align:center;color:#999;padding:20px;">暂无题目</div>';
@@ -380,6 +492,66 @@
             `;
         }
         
+        function renderLogicSection(question) {
+            const logic = question.logic;
+            const hasRules = logic && logic.rules && logic.rules.length > 0;
+            
+            let rulesHtml = '';
+            if (hasRules) {
+                rulesHtml = `
+                    <div class="logic-rules">
+                        ${logic.rules.map((rule, idx) => `
+                            <div class="logic-rule-item">
+                                <div class="rule-condition">
+                                    ${getRuleDescription(rule, question.type)}
+                                </div>
+                                <div class="rule-target">
+                                    → 跳转到: ${getTargetTitle(rule.targetQuestionId)}
+                                </div>
+                                <button class="delete-rule-btn" onclick="deleteRule('${question.questionId}', ${idx})">删除</button>
+                            </div>
+                        `).join('')}
+                        ${logic.defaultTarget ? `<div style="margin-top:8px; font-size:13px; color:#666;">默认跳转: ${getTargetTitle(logic.defaultTarget)}</div>` : ''}
+                    </div>
+                `;
+            }
+            
+            return `
+                <div class="logic-section">
+                    <div class="logic-title">
+                        🔗 跳转逻辑设置
+                        <button class="add-rule-btn" onclick="showAddRuleModal('${question.questionId}', '${question.type}')">+ 添加跳转规则</button>
+                    </div>
+                    ${rulesHtml || '<div style="color:#999; font-size:13px;">暂无跳转规则，点击上方按钮添加</div>'}
+                </div>
+            `;
+        }
+        
+        function getRuleDescription(rule, questionType) {
+            if (rule.type === 'single_choice') {
+                return `如果选择 "${rule.optionLabel || rule.optionValue}"`;
+            } else if (rule.type === 'multi_choice') {
+                return `如果选择了 "${rule.optionLabel || rule.optionValue}"`;
+            } else if (rule.type === 'number_range') {
+                return `如果数值在 ${rule.min} ~ ${rule.max} 之间`;
+            } else if (rule.type === 'number_equals') {
+                return `如果数值等于 ${rule.value}`;
+            } else if (rule.type === 'text_contains') {
+                return `如果包含关键词 "${rule.keyword}"`;
+            }
+            return `未知规则`;
+        }
+        
+        function getTargetTitle(targetId) {
+            if (!targetId) return '结束问卷';
+            const q = currentSurvey.questions.find(q => q.questionId === targetId);
+            return q ? q.title : targetId.substring(0, 20) + '...';
+        }
+        
+        function getOtherQuestions(currentId) {
+            return currentSurvey.questions.filter(q => q.questionId !== currentId);
+        }
+        
         function renderQuestionConfig(q) {
             let html = '<div class="question-config">';
             if (q.type === 'single_choice' && q.config?.options) {
@@ -406,6 +578,236 @@
             }
             html += '</div>';
             return html;
+        }
+        
+        async function showAddRuleModal(questionId, questionType) {
+            currentLogicQuestion = questionId;
+            editingRuleIndex = null;
+            
+            const otherQuestions = getOtherQuestions(questionId);
+            const question = currentSurvey.questions.find(q => q.questionId === questionId);
+            const options = question?.config?.options || [];
+            
+            let conditionHtml = '';
+            
+            if (questionType === 'single_choice') {
+                conditionHtml = `
+                    <div class="form-group">
+                        <label>触发条件</label>
+                        <select id="ruleOptionValue">
+                            <option value="">请选择选项</option>
+                            ${options.map(opt => `<option value="${escapeHtml(opt.value)}">${escapeHtml(opt.label)} (${opt.value})</option>`).join('')}
+                        </select>
+                    </div>
+                    <input type="hidden" id="ruleType" value="single_choice">
+                `;
+            } else if (questionType === 'multi_choice') {
+                conditionHtml = `
+                    <div class="form-group">
+                        <label>触发条件（当选中该选项时跳转）</label>
+                        <select id="ruleOptionValue">
+                            <option value="">请选择选项</option>
+                            ${options.map(opt => `<option value="${escapeHtml(opt.value)}">${escapeHtml(opt.label)} (${opt.value})</option>`).join('')}
+                        </select>
+                    </div>
+                    <input type="hidden" id="ruleType" value="multi_choice">
+                `;
+            } else if (questionType === 'number') {
+                conditionHtml = `
+                    <div class="form-group">
+                        <label>规则类型</label>
+                        <select id="numberRuleType" onchange="toggleNumberRuleFields()">
+                            <option value="range">数值范围</option>
+                            <option value="equals">等于某个值</option>
+                        </select>
+                    </div>
+                    <div id="rangeFields">
+                        <div class="form-group">
+                            <label>最小值</label>
+                            <input type="number" id="ruleMin">
+                        </div>
+                        <div class="form-group">
+                            <label>最大值</label>
+                            <input type="number" id="ruleMax">
+                        </div>
+                    </div>
+                    <div id="equalsFields" style="display:none;">
+                        <div class="form-group">
+                            <label>等于值</label>
+                            <input type="number" id="ruleValue">
+                        </div>
+                    </div>
+                    <input type="hidden" id="ruleType" value="number_range">
+                `;
+            } else if (questionType === 'text') {
+                conditionHtml = `
+                    <div class="form-group">
+                        <label>规则类型</label>
+                        <select id="textRuleType" onchange="toggleTextRuleFields()">
+                            <option value="contains">包含关键词</option>
+                        </select>
+                    </div>
+                    <div id="containsFields">
+                        <div class="form-group">
+                            <label>关键词</label>
+                            <input type="text" id="ruleKeyword" placeholder="输入关键词">
+                        </div>
+                    </div>
+                    <input type="hidden" id="ruleType" value="text_contains">
+                `;
+            }
+            
+            const targetOptions = otherQuestions.map(q => 
+                `<option value="${q.questionId}">${escapeHtml(q.title)}</option>`
+            ).join('');
+            
+            document.getElementById('logicModalContent').innerHTML = `
+                <div class="form-group">
+                    <label>跳转目标题目</label>
+                    <select id="ruleTarget">
+                        <option value="">结束问卷（不跳转）</option>
+                        ${targetOptions}
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>优先级（数字越小优先级越高）</label>
+                    <input type="number" id="rulePriority" value="1">
+                </div>
+                <div style="margin: 15px 0;">
+                    <strong>触发条件设置：</strong>
+                </div>
+                ${conditionHtml}
+                <div class="form-group">
+                    <label>选项显示标签（可选）</label>
+                    <input type="text" id="ruleOptionLabel" placeholder="用于显示，不填则使用选项值">
+                </div>
+            `;
+            
+            document.getElementById('logicModal').style.display = 'flex';
+        }
+        
+        function toggleNumberRuleFields() {
+            const type = document.getElementById('numberRuleType').value;
+            document.getElementById('rangeFields').style.display = type === 'range' ? 'block' : 'none';
+            document.getElementById('equalsFields').style.display = type === 'equals' ? 'block' : 'none';
+            document.getElementById('ruleType').value = type === 'range' ? 'number_range' : 'number_equals';
+        }
+        
+        function toggleTextRuleFields() {
+            // 目前只有包含关键词
+            document.getElementById('ruleType').value = 'text_contains';
+        }
+        
+        async function saveRule() {
+            const target = document.getElementById('ruleTarget').value;
+            const priority = parseInt(document.getElementById('rulePriority').value) || 1;
+            const ruleType = document.getElementById('ruleType').value;
+            
+            let rule = {
+                type: ruleType,
+                priority: priority,
+                targetQuestionId: target || null
+            };
+            
+            if (ruleType === 'single_choice' || ruleType === 'multi_choice') {
+                rule.optionValue = document.getElementById('ruleOptionValue').value;
+                rule.optionLabel = document.getElementById('ruleOptionLabel').value || rule.optionValue;
+                if (!rule.optionValue) {
+                    alert('请选择选项');
+                    return;
+                }
+            } else if (ruleType === 'number_range') {
+                rule.min = parseFloat(document.getElementById('ruleMin').value);
+                rule.max = parseFloat(document.getElementById('ruleMax').value);
+                if (isNaN(rule.min) && isNaN(rule.max)) {
+                    alert('请至少填写最小值或最大值');
+                    return;
+                }
+            } else if (ruleType === 'number_equals') {
+                rule.value = parseFloat(document.getElementById('ruleValue').value);
+                if (isNaN(rule.value)) {
+                    alert('请填写有效的数值');
+                    return;
+                }
+            } else if (ruleType === 'text_contains') {
+                rule.keyword = document.getElementById('ruleKeyword').value;
+                if (!rule.keyword) {
+                    alert('请填写关键词');
+                    return;
+                }
+            }
+            
+            try {
+                // 获取当前问卷的现有逻辑
+                const question = currentSurvey.questions.find(q => q.questionId === currentLogicQuestion);
+                const existingRules = (question?.logic?.rules) || [];
+                
+                if (editingRuleIndex !== null) {
+                    existingRules[editingRuleIndex] = rule;
+                } else {
+                    existingRules.push(rule);
+                }
+                
+                const res = await fetch(`${API_BASE}/save-logic`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${token}`
+                    },
+                    body: JSON.stringify({
+                        surveyId: currentSurvey.surveyId,
+                        sourceQuestionId: currentLogicQuestion,
+                        rules: existingRules,
+                        defaultTarget: null
+                    })
+                });
+                
+                const data = await res.json();
+                if (data.success) {
+                    showMessage('✅ 跳转规则保存成功', 'success');
+                    closeLogicModal();
+                    loadSurvey();
+                } else {
+                    showMessage('❌ 保存失败：' + data.error, 'error');
+                }
+            } catch (err) {
+                showMessage('❌ 网络错误：' + err.message, 'error');
+            }
+        }
+        
+        async function deleteRule(questionId, ruleIndex) {
+            if (!confirm('确定要删除这条跳转规则吗？')) return;
+            
+            try {
+                const res = await fetch(`${API_BASE}/delete-logic-rule`, {
+                    method: 'DELETE',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${token}`
+                    },
+                    body: JSON.stringify({
+                        surveyId: currentSurvey.surveyId,
+                        sourceQuestionId: questionId,
+                        ruleIndex: ruleIndex
+                    })
+                });
+                
+                const data = await res.json();
+                if (data.success) {
+                    showMessage('✅ 规则删除成功', 'success');
+                    loadSurvey();
+                } else {
+                    showMessage('❌ 删除失败：' + data.error, 'error');
+                }
+            } catch (err) {
+                showMessage('❌ 网络错误：' + err.message, 'error');
+            }
+        }
+        
+        function closeLogicModal() {
+            document.getElementById('logicModal').style.display = 'none';
+            currentLogicQuestion = null;
+            editingRuleIndex = null;
         }
         
         async function deleteQuestion(questionId) {
