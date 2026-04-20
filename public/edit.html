@@ -168,6 +168,47 @@
             background: white;
             border-radius: 8px;
         }
+        .add-question-panel {
+            margin-top: 20px;
+            padding-top: 20px;
+            border-top: 1px solid #eee;
+        }
+        .question-select-list {
+            max-height: 300px;
+            overflow-y: auto;
+            border: 1px solid #eee;
+            border-radius: 8px;
+            margin-top: 10px;
+        }
+        .question-select-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 12px;
+            border-bottom: 1px solid #eee;
+            cursor: pointer;
+        }
+        .question-select-item:hover {
+            background: #f8f9fa;
+        }
+        .question-select-info {
+            flex: 1;
+        }
+        .question-select-title {
+            font-weight: 500;
+        }
+        .question-select-type {
+            font-size: 12px;
+            color: #999;
+        }
+        .add-btn-small {
+            background: #28a745;
+            color: white;
+            border: none;
+            padding: 6px 12px;
+            border-radius: 6px;
+            cursor: pointer;
+        }
         @media (max-width: 768px) {
             .question-header {
                 flex-direction: column;
@@ -305,7 +346,25 @@
                 <div class="card">
                     <h2>📝 题目列表</h2>
                     ${questionsHtml}
-                    <button class="add-question-btn" onclick="location.href='/question-bank.html'">+ 从题库添加题目</button>
+                    
+                    <div class="add-question-panel">
+                        <button class="add-question-btn" onclick="toggleAddQuestionPanel()">+ 从题库添加题目</button>
+                        <div id="addQuestionPanel" style="display:none; margin-top: 15px;">
+                            <div class="form-group">
+                                <label>选择题目类型</label>
+                                <select id="questionTypeFilter" onchange="loadAvailableQuestions()">
+                                    <option value="all">全部题型</option>
+                                    <option value="single_choice">单选题</option>
+                                    <option value="multi_choice">多选题</option>
+                                    <option value="text">文本题</option>
+                                    <option value="number">数字题</option>
+                                </select>
+                            </div>
+                            <div id="availableQuestionsList" class="question-select-list">
+                                <div style="text-align:center;padding:20px;color:#999;">加载中...</div>
+                            </div>
+                        </div>
+                    </div>
                 </div>
                 
                 <div class="card">
@@ -353,7 +412,6 @@
             if (!confirm(`确定要从问卷中移除该题目吗？\n注意：只从当前问卷移除，不会删除题库中的题目。`)) return;
             
             try {
-                // 获取当前问卷的所有题目，过滤掉要删除的
                 const updatedQuestions = currentSurvey.questions.filter(q => q.questionId !== questionId);
                 
                 const res = await fetch(`${API_BASE}/update-survey-questions`, {
@@ -430,6 +488,82 @@
             showMessage('✅ 链接已复制！', 'success');
         }
         
+        let availableQuestions = [];
+        
+        function toggleAddQuestionPanel() {
+            const panel = document.getElementById('addQuestionPanel');
+            if (panel.style.display === 'none') {
+                panel.style.display = 'block';
+                loadAvailableQuestions();
+            } else {
+                panel.style.display = 'none';
+            }
+        }
+        
+        async function loadAvailableQuestions() {
+            const filter = document.getElementById('questionTypeFilter')?.value || 'all';
+            const container = document.getElementById('availableQuestionsList');
+            container.innerHTML = '<div style="text-align:center;padding:20px;color:#999;">加载中...</div>';
+            
+            try {
+                const res = await fetch(`${API_BASE}/available-questions?surveyId=${currentSurvey.surveyId}`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                const data = await res.json();
+                
+                if (data.success) {
+                    availableQuestions = data.questions;
+                    let filtered = availableQuestions;
+                    if (filter !== 'all') {
+                        filtered = availableQuestions.filter(q => q.type === filter);
+                    }
+                    
+                    if (filtered.length === 0) {
+                        container.innerHTML = '<div style="text-align:center;padding:40px;color:#999;">暂无可用题目，请先到题库创建题目</div>';
+                    } else {
+                        container.innerHTML = filtered.map(q => `
+                            <div class="question-select-item">
+                                <div class="question-select-info">
+                                    <div class="question-select-title">${escapeHtml(q.title)}</div>
+                                    <div class="question-select-type">${getTypeName(q.type)} ${q.isOwner ? '(我的)' : '(共享)'}</div>
+                                </div>
+                                <button class="add-btn-small" onclick="addQuestionToSurvey('${q.versionId}')">添加</button>
+                            </div>
+                        `).join('');
+                    }
+                }
+            } catch (err) {
+                container.innerHTML = `<div style="text-align:center;padding:20px;color:#999;">加载失败: ${err.message}</div>`;
+            }
+        }
+        
+        async function addQuestionToSurvey(versionId) {
+            try {
+                const res = await fetch(`${API_BASE}/add-question-from-bank`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${token}`
+                    },
+                    body: JSON.stringify({
+                        surveyId: currentSurvey.surveyId,
+                        versionId: versionId
+                    })
+                });
+                
+                const data = await res.json();
+                
+                if (data.success) {
+                    showMessage('✅ 题目已添加到问卷！', 'success');
+                    loadSurvey();
+                } else {
+                    showMessage('❌ 添加失败：' + (data.error || '未知错误'), 'error');
+                }
+            } catch (err) {
+                showMessage('❌ 网络错误：' + err.message, 'error');
+            }
+        }
+        
         function getTypeName(type) {
             const types = {
                 'single_choice': '单选题',
@@ -454,4 +588,4 @@
         loadSurvey();
     </script>
 </body>
-</html>   
+</html>

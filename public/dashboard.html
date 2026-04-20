@@ -440,6 +440,7 @@
                             <div class="survey-meta">
                                 <span>📅 ${formatDate(survey.createdAt)}</span>
                                 <span>📊 ${survey.questions?.length || 0} 道题目</span>
+                                <span>📝 ${survey.responseCount || 0} 份答卷</span>
                                 ${survey.deadline ? `<span>⏰ 截止: ${formatDate(survey.deadline)}</span>` : ''}
                             </div>
                             <div class="survey-id-box">

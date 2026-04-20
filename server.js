@@ -115,6 +115,36 @@ app.get("/api/me", authMiddleware, async (req, res) => {
 
 // ========== 问卷 API ==========
 
+// 获取我的问卷列表
+app.get("/api/my-surveys", authMiddleware, async (req, res) => {
+  try {
+    const surveys = await Survey.find({ creatorId: req.user._id })
+      .sort({ createdAt: -1 });
+    
+    const result = [];
+    for (const survey of surveys) {
+      const responseCount = await Response.countDocuments({ surveyId: survey._id });
+      result.push({
+        surveyId: survey.surveyId,
+        title: survey.title,
+        description: survey.description,
+        status: survey.status,
+        deadline: survey.deadline,
+        allowAnonymous: survey.allowAnonymous,
+        allowMultipleSubmit: survey.allowMultipleSubmit,
+        questions: survey.questions,
+        responseCount: responseCount,
+        createdAt: survey.createdAt
+      });
+    }
+    
+    res.json({ success: true, surveys: result });
+  } catch (err) {
+    console.error("获取问卷列表错误:", err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // 获取我的单个问卷详情（带完整题目信息）
 app.get("/api/my-survey/:surveyId", authMiddleware, async (req, res) => {
   try {
@@ -127,7 +157,6 @@ app.get("/api/my-survey/:surveyId", authMiddleware, async (req, res) => {
       return res.status(404).json({ error: "问卷不存在" });
     }
     
-    // 获取每个题目的详细信息
     const questionsWithDetails = [];
     for (const sq of survey.questions) {
       const QuestionVersion = require("./models/QuestionVersion");
@@ -146,7 +175,6 @@ app.get("/api/my-survey/:surveyId", authMiddleware, async (req, res) => {
       }
     }
     
-    // 按 order 排序
     questionsWithDetails.sort((a, b) => (a.order || 0) - (b.order || 0));
     
     res.json({ 
@@ -169,6 +197,119 @@ app.get("/api/my-survey/:surveyId", authMiddleware, async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
+
+// 更新问卷的题目列表
+app.put("/api/update-survey-questions", authMiddleware, async (req, res) => {
+  try {
+    const { surveyId, questions } = req.body;
+    
+    const survey = await Survey.findOne({ surveyId, creatorId: req.user._id });
+    if (!survey) {
+      return res.status(404).json({ error: "问卷不存在或无权限" });
+    }
+    
+    survey.questions = questions;
+    await survey.save();
+    
+    res.json({ success: true, message: "问卷题目更新成功" });
+  } catch (err) {
+    console.error("更新问卷题目错误:", err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// 向问卷添加题目（从题库）
+app.post("/api/add-question-from-bank", authMiddleware, async (req, res) => {
+  try {
+    const { surveyId, versionId } = req.body;
+    
+    if (!surveyId || !versionId) {
+      return res.status(400).json({ error: "缺少问卷ID或题目版本ID" });
+    }
+    
+    const survey = await Survey.findOne({ surveyId, creatorId: req.user._id });
+    if (!survey) {
+      return res.status(404).json({ error: "问卷不存在或无权限" });
+    }
+    
+    const QuestionVersion = require("./models/QuestionVersion");
+    const version = await QuestionVersion.findOne({ versionId });
+    if (!version) {
+      return res.status(404).json({ error: "题目版本不存在" });
+    }
+    
+    if (survey.questions.some(q => q.versionId === versionId)) {
+      return res.status(400).json({ error: "题目已存在于问卷中" });
+    }
+    
+    survey.questions.push({
+      questionBankId: version.baseId,
+      versionId: versionId,
+      order: survey.questions.length,
+      logic: null
+    });
+    
+    await survey.save();
+    
+    res.json({ success: true, message: "题目添加成功" });
+  } catch (err) {
+    console.error("添加题目到问卷错误:", err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// 获取可添加的题库题目列表（用于编辑页面）
+app.get("/api/available-questions", authMiddleware, async (req, res) => {
+  try {
+    const { surveyId } = req.query;
+    
+    const QuestionBank = require("./models/QuestionBank");
+    const QuestionVersion = require("./models/QuestionVersion");
+    
+    let existingVersionIds = [];
+    if (surveyId) {
+      const survey = await Survey.findOne({ surveyId, creatorId: req.user._id });
+      if (survey) {
+        existingVersionIds = survey.questions.map(q => q.versionId);
+      }
+    }
+    
+    const myQuestions = await QuestionBank.find({ ownerId: req.user._id });
+    const sharedQuestions = await QuestionBank.find({
+      $or: [
+        { isPublic: true },
+        { sharedWith: req.user._id }
+      ],
+      ownerId: { $ne: req.user._id }
+    });
+    
+    const allQuestions = [...myQuestions, ...sharedQuestions];
+    
+    const result = [];
+    for (const q of allQuestions) {
+      const latestVersion = await QuestionVersion.findOne({ 
+        baseId: q.baseId, 
+        version: q.currentVersion 
+      });
+      if (latestVersion && !existingVersionIds.includes(latestVersion.versionId)) {
+        result.push({
+          baseId: q.baseId,
+          versionId: latestVersion.versionId,
+          title: latestVersion.title,
+          type: latestVersion.type,
+          isOwner: q.ownerId.toString() === req.user._id.toString(),
+          usageCount: q.usageCount
+        });
+      }
+    }
+    
+    res.json({ success: true, questions: result });
+  } catch (err) {
+    console.error("获取可用题目错误:", err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.post("/api/create-survey", authMiddleware, async (req, res) => {
   try {
     const { title, description, allowAnonymous, allowMultipleSubmit, deadline } = req.body;
@@ -357,10 +498,8 @@ app.get("/api/survey/:surveyId", async (req, res) => {
       return res.status(404).json({ error: "问卷不存在" });
     }
     
-    // 获取每个题目的详情
     const questions = [];
     for (const sq of survey.questions) {
-      // 从 QuestionVersion 获取题目内容
       const QuestionVersion = require("./models/QuestionVersion");
       const version = await QuestionVersion.findOne({ versionId: sq.versionId });
       
@@ -368,7 +507,7 @@ app.get("/api/survey/:surveyId", async (req, res) => {
         questions.push({
           questionId: sq.versionId,
           title: version.title,
-          type: version.type,        // 🔥 关键：必须有 type
+          type: version.type,
           required: true,
           config: version.config || {}
         });
@@ -473,25 +612,22 @@ app.get("/api/survey-stats/:surveyId", authMiddleware, async (req, res) => {
     
     const responses = await Response.find({ surveyId: survey._id });
     
-    // 构建统计结果
     const stats = {
       totalResponses: responses.length,
       questions: {}
     };
     
-    // 🔥 修复：从 QuestionVersion 获取题目信息
     for (const sq of survey.questions) {
       const QuestionVersion = require("./models/QuestionVersion");
       const version = await QuestionVersion.findOne({ versionId: sq.versionId });
       
       if (version) {
         stats.questions[sq.versionId] = {
-          title: version.title,        // 🔥 从版本表获取标题
+          title: version.title,
           type: version.type,
           total: 0
         };
         
-        // 根据题型初始化统计结构
         if (version.type === "single_choice" && version.config?.options) {
           stats.questions[sq.versionId].options = {};
           version.config.options.forEach(opt => {
@@ -518,7 +654,6 @@ app.get("/api/survey-stats/:surveyId", authMiddleware, async (req, res) => {
       }
     }
     
-    // 统计答卷数据
     for (const r of responses) {
       for (const a of r.answers) {
         const qStat = stats.questions[a.questionId];
@@ -552,7 +687,6 @@ app.get("/api/survey-stats/:surveyId", authMiddleware, async (req, res) => {
       }
     }
     
-    // 计算数字题平均值
     for (const qId in stats.questions) {
       const qStat = stats.questions[qId];
       if (qStat?.type === "number" && qStat.values && qStat.values.length > 0) {

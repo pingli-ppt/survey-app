@@ -97,7 +97,7 @@
             font-size: 12px;
         }
         .option-count {
-            width: 60px;
+            width: 80px;
             text-align: right;
             font-size: 14px;
             color: #666;
@@ -255,36 +255,54 @@
         function renderStatContent(qStat) {
             if (qStat.type === 'single_choice' && qStat.options) {
                 const total = qStat.total || 1;
-                return Object.entries(qStat.options).map(([value, opt]) => {
-                    const percent = total > 0 ? ((opt.count / total) * 100).toFixed(1) : 0;
-                    return `
-                        <div class="option-bar">
-                            <div class="option-label">${escapeHtml(opt.label)}</div>
-                            <div class="bar">
-                                <div class="bar-fill" style="width: ${percent}%">${percent}%</div>
+                return `
+                    <div style="margin-bottom: 15px;">
+                        <strong>总回答人数: ${qStat.total}</strong>
+                    </div>
+                    ${Object.entries(qStat.options).map(([value, opt]) => {
+                        const percent = total > 0 ? ((opt.count / total) * 100).toFixed(1) : 0;
+                        return `
+                            <div class="option-bar">
+                                <div class="option-label">${escapeHtml(opt.label)}</div>
+                                <div class="bar">
+                                    <div class="bar-fill" style="width: ${percent}%">${percent}%</div>
+                                </div>
+                                <div class="option-count">${opt.count} 人</div>
                             </div>
-                            <div class="option-count">${opt.count} 人</div>
-                        </div>
-                    `;
-                }).join('');
+                        `;
+                    }).join('')}
+                `;
             }
             else if (qStat.type === 'multi_choice' && qStat.options) {
                 const totalSelections = qStat.totalSelections || 1;
-                return Object.entries(qStat.options).map(([value, opt]) => {
-                    const percent = totalSelections > 0 ? ((opt.count / totalSelections) * 100).toFixed(1) : 0;
-                    return `
-                        <div class="option-bar">
-                            <div class="option-label">${escapeHtml(opt.label)}</div>
-                            <div class="bar">
-                                <div class="bar-fill" style="width: ${percent}%">${percent}%</div>
+                const totalRespondents = qStat.total || 1;
+                return `
+                    <div style="margin-bottom: 15px;">
+                        <strong>总回答人数: ${qStat.total}</strong> | 
+                        <strong>总选择次数: ${qStat.totalSelections}</strong> | 
+                        <strong>人均选择: ${(qStat.totalSelections / qStat.total).toFixed(1)} 项</strong>
+                    </div>
+                    ${Object.entries(qStat.options).map(([value, opt]) => {
+                        const percent = totalSelections > 0 ? ((opt.count / totalSelections) * 100).toFixed(1) : 0;
+                        const respondentPercent = totalRespondents > 0 ? ((opt.count / totalRespondents) * 100).toFixed(1) : 0;
+                        return `
+                            <div class="option-bar">
+                                <div class="option-label">${escapeHtml(opt.label)}</div>
+                                <div class="bar">
+                                    <div class="bar-fill" style="width: ${percent}%">${percent}%</div>
+                                </div>
+                                <div class="option-count">${opt.count} 次 (${respondentPercent}% 的人选择)</div>
                             </div>
-                            <div class="option-count">${opt.count} 次</div>
-                        </div>
-                    `;
-                }).join('');
+                        `;
+                    }).join('')}
+                `;
             }
             else if (qStat.type === 'text') {
+                const answerCount = qStat.answers?.length || 0;
                 return `
+                    <div style="margin-bottom: 15px;">
+                        <strong>共收到 ${answerCount} 条回答</strong>
+                    </div>
                     <div class="answers-list">
                         ${qStat.answers && qStat.answers.length ? 
                             qStat.answers.map(ans => `<div class="answer-item">📝 ${escapeHtml(String(ans))}</div>`).join('') : 
@@ -293,11 +311,17 @@
                 `;
             }
             else if (qStat.type === 'number') {
+                const avg = qStat.avg ? parseFloat(qStat.avg).toFixed(2) : '-';
+                const count = qStat.values?.length || 0;
                 return `
                     <div style="display: flex; gap: 20px; flex-wrap: wrap; margin-bottom: 20px;">
                         <div style="background: #e9ecef; padding: 15px; border-radius: 8px; flex: 1; text-align: center;">
+                            <div style="font-size: 12px; color: #666;">样本数</div>
+                            <div style="font-size: 24px; font-weight: bold;">${count}</div>
+                        </div>
+                        <div style="background: #e9ecef; padding: 15px; border-radius: 8px; flex: 1; text-align: center;">
                             <div style="font-size: 12px; color: #666;">平均值</div>
-                            <div style="font-size: 24px; font-weight: bold;">${qStat.avg || '-'}</div>
+                            <div style="font-size: 24px; font-weight: bold;">${avg}</div>
                         </div>
                         <div style="background: #e9ecef; padding: 15px; border-radius: 8px; flex: 1; text-align: center;">
                             <div style="font-size: 12px; color: #666;">最小值</div>

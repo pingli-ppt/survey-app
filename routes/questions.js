@@ -116,6 +116,7 @@ router.get("/shared-questions", authMiddleware, async (req, res) => {
           type: latestVersion.type,
           ownerId: q.ownerId,
           isPublic: q.isPublic,
+          usageCount: q.usageCount,
           createdAt: q.createdAt
         });
       }
@@ -473,13 +474,12 @@ router.get("/:baseId/cross-stats", authMiddleware, async (req, res) => {
   }
 });
 
-module.exports = router;
-// ========== 从题库选题创建问卷 ==========
+// ========== 10. 从题库选题创建问卷 ==========
 router.post("/create-survey-from-bank", authMiddleware, async (req, res) => {
   try {
     const { title, description, allowAnonymous, allowMultipleSubmit, deadline, selectedQuestions } = req.body;
     
-    console.log("收到创建问卷请求:", { title, selectedQuestionsCount: selectedQuestions?.length });
+    console.log("收到创建问卷请求:", { title, selectedCount: selectedQuestions?.length });
     
     if (!title) {
       return res.status(400).json({ error: "问卷标题不能为空" });
@@ -489,9 +489,11 @@ router.post("/create-survey-from-bank", authMiddleware, async (req, res) => {
       return res.status(400).json({ error: "请至少选择一个题目" });
     }
     
-    // 动态导入 Survey 模型（避免循环依赖）
     const Survey = require("../models/Survey");
     const User = require("../models/User");
+    const QuestionVersion = require("../models/QuestionVersion");
+    const QuestionUsage = require("../models/QuestionUsage");
+    const QuestionBank = require("../models/QuestionBank");
     
     const surveyId = Survey.generateSurveyId();
     
@@ -510,8 +512,6 @@ router.post("/create-survey-from-bank", authMiddleware, async (req, res) => {
     // 添加题目关联
     for (let i = 0; i < selectedQuestions.length; i++) {
       const sq = selectedQuestions[i];
-      
-      // 验证题目版本存在
       const version = await QuestionVersion.findOne({ versionId: sq.versionId });
       if (!version) {
         console.warn(`题目版本不存在: ${sq.versionId}`);
@@ -562,3 +562,5 @@ router.post("/create-survey-from-bank", authMiddleware, async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
+
+module.exports = router;

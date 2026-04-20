@@ -261,7 +261,7 @@
         let currentTab = 'my';
         let myQuestions = [];
         let sharedQuestions = [];
-        let selectedQuestions = [];  // 存储选中的 { versionId, title, type }
+        let selectedQuestions = [];  // 存储选中的 { baseId, title, type }
         
         async function loadMyQuestions() {
             try {
@@ -348,10 +348,8 @@
             const existingIndex = selectedQuestions.findIndex(sq => sq.baseId === baseId);
             
             if (existingIndex !== -1) {
-                // 取消选择
                 selectedQuestions.splice(existingIndex, 1);
             } else {
-                // 添加选择
                 selectedQuestions.push({ baseId, title, type });
             }
             
@@ -399,20 +397,30 @@
                 return;
             }
             
-            // 获取每个题目的最新版本
+            // 获取每个题目的最新版本ID
             const selectedVersions = [];
             for (const sq of selectedQuestions) {
-                // 获取题目的最新版本ID
-                const res = await fetch(`${API_BASE}/questions/${sq.baseId}`, {
-                    headers: { 'Authorization': `Bearer ${token}` }
-                });
-                const data = await res.json();
-                if (data.success && data.data.current) {
-                    selectedVersions.push({
-                        versionId: data.data.current.versionId,
-                        baseId: sq.baseId
+                try {
+                    const res = await fetch(`${API_BASE}/questions/${sq.baseId}`, {
+                        headers: { 'Authorization': `Bearer ${token}` }
                     });
+                    const data = await res.json();
+                    if (data.success && data.data.current) {
+                        selectedVersions.push({
+                            versionId: data.data.current.versionId,
+                            baseId: sq.baseId
+                        });
+                    } else {
+                        console.warn(`无法获取题目 ${sq.baseId} 的版本信息`);
+                    }
+                } catch (err) {
+                    console.error(`获取题目版本失败: ${sq.baseId}`, err);
                 }
+            }
+            
+            if (selectedVersions.length === 0) {
+                showMessage('无法获取所选题目的版本信息，请重试', 'error');
+                return;
             }
             
             const surveyData = {
