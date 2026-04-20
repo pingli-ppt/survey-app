@@ -115,15 +115,60 @@ app.get("/api/me", authMiddleware, async (req, res) => {
 
 // ========== 问卷 API ==========
 
-app.get("/api/my-surveys", authMiddleware, async (req, res) => {
+// 获取我的单个问卷详情（带完整题目信息）
+app.get("/api/my-survey/:surveyId", authMiddleware, async (req, res) => {
   try {
-    const surveys = await Survey.find({ creatorId: req.user._id }).sort({ createdAt: -1 });
-    res.json({ success: true, surveys });
+    const survey = await Survey.findOne({ 
+      surveyId: req.params.surveyId, 
+      creatorId: req.user._id 
+    });
+    
+    if (!survey) {
+      return res.status(404).json({ error: "问卷不存在" });
+    }
+    
+    // 获取每个题目的详细信息
+    const questionsWithDetails = [];
+    for (const sq of survey.questions) {
+      const QuestionVersion = require("./models/QuestionVersion");
+      const version = await QuestionVersion.findOne({ versionId: sq.versionId });
+      
+      if (version) {
+        questionsWithDetails.push({
+          questionId: sq.versionId,
+          title: version.title,
+          type: version.type,
+          required: true,
+          config: version.config,
+          order: sq.order,
+          logic: sq.logic
+        });
+      }
+    }
+    
+    // 按 order 排序
+    questionsWithDetails.sort((a, b) => (a.order || 0) - (b.order || 0));
+    
+    res.json({ 
+      success: true, 
+      survey: {
+        _id: survey._id,
+        surveyId: survey.surveyId,
+        title: survey.title,
+        description: survey.description,
+        status: survey.status,
+        deadline: survey.deadline,
+        allowAnonymous: survey.allowAnonymous,
+        allowMultipleSubmit: survey.allowMultipleSubmit,
+        questions: questionsWithDetails,
+        createdAt: survey.createdAt
+      }
+    });
   } catch (err) {
+    console.error("获取问卷详情错误:", err);
     res.status(500).json({ error: err.message });
   }
 });
-
 app.post("/api/create-survey", authMiddleware, async (req, res) => {
   try {
     const { title, description, allowAnonymous, allowMultipleSubmit, deadline } = req.body;
@@ -304,6 +349,7 @@ app.delete("/api/delete-logic", authMiddleware, async (req, res) => {
   }
 });
 
+// 获取问卷详情（新版）
 app.get("/api/survey/:surveyId", async (req, res) => {
   try {
     const survey = await Survey.findOne({ surveyId: req.params.surveyId });
@@ -311,21 +357,35 @@ app.get("/api/survey/:surveyId", async (req, res) => {
       return res.status(404).json({ error: "问卷不存在" });
     }
     
+    // 获取每个题目的详情
+    const questions = [];
+    for (const sq of survey.questions) {
+      // 从 QuestionVersion 获取题目内容
+      const QuestionVersion = require("./models/QuestionVersion");
+      const version = await QuestionVersion.findOne({ versionId: sq.versionId });
+      
+      if (version) {
+        questions.push({
+          questionId: sq.versionId,
+          title: version.title,
+          type: version.type,        // 🔥 关键：必须有 type
+          required: true,
+          config: version.config || {}
+        });
+      } else {
+        console.warn(`版本不存在: ${sq.versionId}`);
+      }
+    }
+    
     res.json({
       success: true,
       survey: {
         surveyId: survey.surveyId,
         title: survey.title,
-        description: survey.description,
+        description: survey.description || "",
         allowAnonymous: survey.allowAnonymous,
         deadline: survey.deadline,
-        questions: survey.questions.map(q => ({
-          questionId: q.questionId,
-          title: q.title,
-          type: q.type,
-          required: q.required,
-          config: q.config
-        }))
+        questions: questions
       }
     });
   } catch (err) {
@@ -403,6 +463,7 @@ app.post("/api/test-jump", async (req, res) => {
   }
 });
 
+// 获取统计结果
 app.get("/api/survey-stats/:surveyId", authMiddleware, async (req, res) => {
   try {
     const survey = await Survey.findOne({ surveyId: req.params.surveyId, creatorId: req.user._id });
@@ -412,40 +473,52 @@ app.get("/api/survey-stats/:surveyId", authMiddleware, async (req, res) => {
     
     const responses = await Response.find({ surveyId: survey._id });
     
+    // 构建统计结果
     const stats = {
       totalResponses: responses.length,
       questions: {}
     };
     
-    for (const q of survey.questions) {
-      stats.questions[q.questionId] = {
-        title: q.title,
-        type: q.type,
-        total: 0
-      };
+    // 🔥 修复：从 QuestionVersion 获取题目信息
+    for (const sq of survey.questions) {
+      const QuestionVersion = require("./models/QuestionVersion");
+      const version = await QuestionVersion.findOne({ versionId: sq.versionId });
       
-      if (q.type === "single_choice" && q.config?.options) {
-        stats.questions[q.questionId].options = {};
-        q.config.options.forEach(opt => {
-          stats.questions[q.questionId].options[opt.value] = { label: opt.label, count: 0 };
-        });
-      } else if (q.type === "multi_choice" && q.config?.options) {
-        stats.questions[q.questionId].options = {};
-        q.config.options.forEach(opt => {
-          stats.questions[q.questionId].options[opt.value] = { label: opt.label, count: 0 };
-        });
-        stats.questions[q.questionId].totalSelections = 0;
-      } else if (q.type === "text") {
-        stats.questions[q.questionId].answers = [];
-      } else if (q.type === "number") {
-        stats.questions[q.questionId].values = [];
-        stats.questions[q.questionId].sum = 0;
-        stats.questions[q.questionId].avg = 0;
-        stats.questions[q.questionId].min = null;
-        stats.questions[q.questionId].max = null;
+      if (version) {
+        stats.questions[sq.versionId] = {
+          title: version.title,        // 🔥 从版本表获取标题
+          type: version.type,
+          total: 0
+        };
+        
+        // 根据题型初始化统计结构
+        if (version.type === "single_choice" && version.config?.options) {
+          stats.questions[sq.versionId].options = {};
+          version.config.options.forEach(opt => {
+            stats.questions[sq.versionId].options[opt.value] = { label: opt.label, count: 0 };
+          });
+        }
+        else if (version.type === "multi_choice" && version.config?.options) {
+          stats.questions[sq.versionId].options = {};
+          version.config.options.forEach(opt => {
+            stats.questions[sq.versionId].options[opt.value] = { label: opt.label, count: 0 };
+          });
+          stats.questions[sq.versionId].totalSelections = 0;
+        }
+        else if (version.type === "text") {
+          stats.questions[sq.versionId].answers = [];
+        }
+        else if (version.type === "number") {
+          stats.questions[sq.versionId].values = [];
+          stats.questions[sq.versionId].sum = 0;
+          stats.questions[sq.versionId].avg = 0;
+          stats.questions[sq.versionId].min = null;
+          stats.questions[sq.versionId].max = null;
+        }
       }
     }
     
+    // 统计答卷数据
     for (const r of responses) {
       for (const a of r.answers) {
         const qStat = stats.questions[a.questionId];
@@ -453,18 +526,21 @@ app.get("/api/survey-stats/:surveyId", authMiddleware, async (req, res) => {
         
         qStat.total++;
         
-        if (qStat.type === "single_choice" && qStat.options[a.value]) {
+        if (qStat.type === "single_choice" && qStat.options && qStat.options[a.value]) {
           qStat.options[a.value].count++;
-        } else if (qStat.type === "multi_choice" && Array.isArray(a.value)) {
+        }
+        else if (qStat.type === "multi_choice" && Array.isArray(a.value)) {
           for (const v of a.value) {
-            if (qStat.options[v]) {
+            if (qStat.options && qStat.options[v]) {
               qStat.options[v].count++;
               qStat.totalSelections = (qStat.totalSelections || 0) + 1;
             }
           }
-        } else if (qStat.type === "text") {
+        }
+        else if (qStat.type === "text") {
           qStat.answers.push(a.value);
-        } else if (qStat.type === "number") {
+        }
+        else if (qStat.type === "number") {
           const num = Number(a.value);
           if (!isNaN(num)) {
             qStat.values.push(num);
@@ -476,9 +552,10 @@ app.get("/api/survey-stats/:surveyId", authMiddleware, async (req, res) => {
       }
     }
     
-    for (const q of survey.questions) {
-      const qStat = stats.questions[q.questionId];
-      if (qStat?.type === "number" && qStat.values.length > 0) {
+    // 计算数字题平均值
+    for (const qId in stats.questions) {
+      const qStat = stats.questions[qId];
+      if (qStat?.type === "number" && qStat.values && qStat.values.length > 0) {
         qStat.avg = (qStat.sum / qStat.values.length).toFixed(2);
       }
     }

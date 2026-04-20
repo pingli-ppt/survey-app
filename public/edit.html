@@ -89,15 +89,6 @@
             border-radius: 4px;
             cursor: pointer;
         }
-        .edit-question-btn {
-            background: #ffc107;
-            color: #333;
-            border: none;
-            padding: 4px 12px;
-            border-radius: 4px;
-            cursor: pointer;
-            margin-right: 5px;
-        }
         .add-question-btn {
             background: #28a745;
             color: white;
@@ -154,59 +145,6 @@
             margin-top: 10px;
             padding-left: 20px;
         }
-        .option-item {
-            display: flex;
-            gap: 10px;
-            margin-bottom: 5px;
-        }
-        .modal {
-            display: none;
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background: rgba(0,0,0,0.5);
-            justify-content: center;
-            align-items: center;
-            z-index: 1000;
-        }
-        .modal-content {
-            background: white;
-            padding: 30px;
-            border-radius: 12px;
-            max-width: 500px;
-            width: 90%;
-            max-height: 80vh;
-            overflow-y: auto;
-        }
-        .modal-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 20px;
-        }
-        .close-btn {
-            background: none;
-            border: none;
-            font-size: 24px;
-            cursor: pointer;
-        }
-        .logic-item {
-            background: #e9ecef;
-            padding: 10px;
-            border-radius: 8px;
-            margin-bottom: 10px;
-        }
-        .add-logic-btn {
-            background: #17a2b8;
-            color: white;
-            border: none;
-            padding: 5px 10px;
-            border-radius: 4px;
-            cursor: pointer;
-            font-size: 12px;
-        }
         .share-link {
             display: flex;
             gap: 10px;
@@ -249,75 +187,6 @@
         </div>
     </div>
 
-    <div id="questionModal" class="modal">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h2>添加题目</h2>
-                <button class="close-btn" onclick="closeModal()">&times;</button>
-            </div>
-            <form id="questionForm">
-                <div class="form-group">
-                    <label>题目ID *</label>
-                    <input type="text" id="qId" required placeholder="例如: q1, q2, age">
-                </div>
-                <div class="form-group">
-                    <label>题目标题 *</label>
-                    <input type="text" id="qTitle" required placeholder="例如: 您的年龄是？">
-                </div>
-                <div class="form-group">
-                    <label>题型 *</label>
-                    <select id="qType" required onchange="onTypeChange()">
-                        <option value="">请选择</option>
-                        <option value="single_choice">单选题</option>
-                        <option value="multi_choice">多选题</option>
-                        <option value="text">文本填空</option>
-                        <option value="number">数字填空</option>
-                    </select>
-                </div>
-                <div class="form-group">
-                    <label>
-                        <input type="checkbox" id="qRequired"> 必填
-                    </label>
-                </div>
-                <div id="configArea"></div>
-                <button type="submit" style="width:100%;padding:10px;background:#28a745;color:white;border:none;border-radius:8px;">添加题目</button>
-            </form>
-        </div>
-    </div>
-
-    <div id="logicModal" class="modal">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h2>添加跳转逻辑</h2>
-                <button class="close-btn" onclick="closeLogicModal()">&times;</button>
-            </div>
-            <form id="logicForm">
-                <div class="form-group">
-                    <label>源题目</label>
-                    <select id="logicSource" required></select>
-                </div>
-                <div class="form-group">
-                    <label>条件类型</label>
-                    <select id="condType" required onchange="onCondTypeChange()">
-                        <option value="option_selected">选项被选中（单选）</option>
-                        <option value="option_any">包含任意选项（多选）</option>
-                        <option value="value_range">数值范围</option>
-                    </select>
-                </div>
-                <div id="condConfigArea"></div>
-                <div class="form-group">
-                    <label>跳转到题目</label>
-                    <select id="logicTarget" required></select>
-                </div>
-                <div class="form-group">
-                    <label>优先级（数字越小越优先）</label>
-                    <input type="number" id="logicPriority" value="1">
-                </div>
-                <button type="submit" style="width:100%;padding:10px;background:#17a2b8;color:white;border:none;border-radius:8px;">添加跳转逻辑</button>
-            </form>
-        </div>
-    </div>
-
     <script>
         const API_BASE = '/api';
         const token = localStorage.getItem('token');
@@ -356,7 +225,7 @@
             }
             
             try {
-                const res = await fetch(`${API_BASE}/my-surveys`, {
+                const res = await fetch(`${API_BASE}/my-survey/${surveyId}`, {
                     headers: { 'Authorization': `Bearer ${token}` }
                 });
                 
@@ -370,15 +239,11 @@
                     throw new Error(data.error || '获取问卷失败');
                 }
                 
-                currentSurvey = data.surveys.find(s => s.surveyId === surveyId);
-                
-                if (!currentSurvey) {
-                    throw new Error('问卷不存在或无权访问');
-                }
-                
+                currentSurvey = data.survey;
                 renderEditPage();
                 
             } catch (err) {
+                console.error('加载问卷错误:', err);
                 document.getElementById('content').innerHTML = `
                     <div class="card">
                         <div class="error">❌ 加载失败：${err.message}</div>
@@ -389,12 +254,13 @@
         }
         
         function renderEditPage() {
-            const questionsHtml = currentSurvey.questions && currentSurvey.questions.length > 0 
-                ? currentSurvey.questions.map((q, index) => `
+            const questions = currentSurvey.questions || [];
+            const questionsHtml = questions.length > 0 
+                ? questions.map((q, index) => `
                     <div class="question-item" data-qid="${q.questionId}">
                         <div class="question-header">
                             <div>
-                                <span class="question-id">${q.questionId}</span>
+                                <span class="question-id">${escapeHtml(q.questionId)}</span>
                                 <span class="question-type">${getTypeName(q.type)}</span>
                                 ${q.required ? '<span style="color:red;">*必填</span>' : ''}
                             </div>
@@ -404,10 +270,9 @@
                         </div>
                         <div><strong>标题:</strong> ${escapeHtml(q.title)}</div>
                         ${renderQuestionConfig(q)}
-                        ${renderLogicSection(q)}
                     </div>
                 `).join('')
-                : '<div style="text-align:center;color:#999;padding:20px;">暂无题目，点击下方按钮添加</div>';
+                : '<div style="text-align:center;color:#999;padding:20px;">暂无题目</div>';
             
             document.getElementById('content').innerHTML = `
                 <div class="card">
@@ -440,7 +305,7 @@
                 <div class="card">
                     <h2>📝 题目列表</h2>
                     ${questionsHtml}
-                    <button class="add-question-btn" onclick="showAddQuestionDialog()">+ 添加题目</button>
+                    <button class="add-question-btn" onclick="location.href='/question-bank.html'">+ 从题库添加题目</button>
                 </div>
                 
                 <div class="card">
@@ -484,332 +349,32 @@
             return html;
         }
         
-        function renderLogicSection(q) {
-            if (!q.logic || q.logic.length === 0) {
-                return `
-                    <div style="margin-top: 10px;">
-                        <button class="add-logic-btn" onclick="showAddLogicDialog('${q.questionId}')">+ 添加跳转逻辑</button>
-                    </div>
-                `;
-            }
-            
-            let logicHtml = '<div style="margin-top: 10px;"><strong>跳转逻辑:</strong></div>';
-            q.logic.forEach((logic, idx) => {
-                logicHtml += `
-                    <div class="logic-item">
-                        <div>条件: ${JSON.stringify(logic.conditions)}</div>
-                        <div>跳转到: ${logic.targetQuestionId}</div>
-                        <div>优先级: ${logic.priority}</div>
-                        <button class="delete-btn" style="margin-top:5px;" onclick="deleteLogic('${q.questionId}', ${idx})">删除此逻辑</button>
-                    </div>
-                `;
-            });
-            logicHtml += `<button class="add-logic-btn" onclick="showAddLogicDialog('${q.questionId}')">+ 添加跳转逻辑</button>`;
-            return logicHtml;
-        }
-        
-        function onTypeChange() {
-            const type = document.getElementById('qType').value;
-            const configArea = document.getElementById('configArea');
-            
-            if (type === 'single_choice') {
-                configArea.innerHTML = `
-                    <div class="form-group">
-                        <label>选项 (每行一个，格式: 值|标签)</label>
-                        <textarea id="options" rows="3" placeholder="male|男&#10;female|女&#10;other|其他"></textarea>
-                    </div>
-                `;
-            } else if (type === 'multi_choice') {
-                configArea.innerHTML = `
-                    <div class="form-group">
-                        <label>选项 (每行一个，格式: 值|标签)</label>
-                        <textarea id="options" rows="3" placeholder="apple|苹果&#10;banana|香蕉&#10;orange|橙子"></textarea>
-                    </div>
-                    <div class="form-group">
-                        <label>最少选择数量</label>
-                        <input type="number" id="minSelect" value="1">
-                    </div>
-                    <div class="form-group">
-                        <label>最多选择数量</label>
-                        <input type="number" id="maxSelect" value="5">
-                    </div>
-                `;
-            } else if (type === 'text') {
-                configArea.innerHTML = `
-                    <div class="form-group">
-                        <label>最小长度</label>
-                        <input type="number" id="minLength" value="0">
-                    </div>
-                    <div class="form-group">
-                        <label>最大长度</label>
-                        <input type="number" id="maxLength" value="500">
-                    </div>
-                `;
-            } else if (type === 'number') {
-                configArea.innerHTML = `
-                    <div class="form-group">
-                        <label>最小值</label>
-                        <input type="number" id="minValue">
-                    </div>
-                    <div class="form-group">
-                        <label>最大值</label>
-                        <input type="number" id="maxValue">
-                    </div>
-                    <div class="form-group">
-                        <label>
-                            <input type="checkbox" id="integerOnly"> 只能输入整数
-                        </label>
-                    </div>
-                `;
-            } else {
-                configArea.innerHTML = '';
-            }
-        }
-        
-        function onCondTypeChange() {
-            const condType = document.getElementById('condType').value;
-            const condConfigArea = document.getElementById('condConfigArea');
-
-            if (condType === 'option_selected') {
-                condConfigArea.innerHTML = `
-                    <div class="form-group">
-                        <label>选择跳转选项</label>
-                        <input type="text" id="optionValue" required placeholder="选项的值">
-                    </div>
-                `;
-            } else if (condType === 'option_any') {
-                condConfigArea.innerHTML = `
-                    <div class="form-group">
-                        <label>选中此选项即触发跳转</label>
-                        <input type="text" id="optionValue" required placeholder="选项的值">
-                    </div>
-                `;
-            } else if (condType === 'value_range') {
-                condConfigArea.innerHTML = `
-                    <div class="form-group">
-                        <label>最小值</label>
-                        <input type="number" id="minValue" required>
-                    </div>
-                    <div class="form-group">
-                        <label>最大值</label>
-                        <input type="number" id="maxValue" required>
-                    </div>
-                `;
-            }
-        }
-        
-        function showAddQuestionDialog() {
-            document.getElementById('questionForm').reset();
-            document.getElementById('configArea').innerHTML = '';
-            document.getElementById('questionModal').style.display = 'flex';
-        }
-        
-        function closeModal() {
-            document.getElementById('questionModal').style.display = 'none';
-        }
-        
-        function showAddLogicDialog(questionId) {
-            const sourceSelect = document.getElementById('logicSource');
-            const targetSelect = document.getElementById('logicTarget');
-            
-            sourceSelect.innerHTML = '';
-            targetSelect.innerHTML = '';
-            
-            currentSurvey.questions.forEach(q => {
-                sourceSelect.innerHTML += `<option value="${q.questionId}" ${q.questionId === questionId ? 'selected' : ''}>${q.questionId} - ${q.title}</option>`;
-                targetSelect.innerHTML += `<option value="${q.questionId}">${q.questionId} - ${q.title}</option>`;
-            });
-            
-            document.getElementById('logicForm').reset();
-            document.getElementById('condConfigArea').innerHTML = '';
-            document.getElementById('logicModal').style.display = 'flex';
-        }
-        
-        function closeLogicModal() {
-            document.getElementById('logicModal').style.display = 'none';
-        }
-        
-        document.getElementById('questionForm').addEventListener('submit', async (e) => {
-            e.preventDefault();
-            
-            const questionId = document.getElementById('qId').value.trim();
-            const title = document.getElementById('qTitle').value.trim();
-            const type = document.getElementById('qType').value;
-            const required = document.getElementById('qRequired').checked;
-            
-            let config = {};
-            
-            if (type === 'single_choice') {
-                const optionsText = document.getElementById('options').value;
-                const options = optionsText.split('\n').filter(line => line.trim()).map(line => {
-                    const [value, label] = line.split('|');
-                    return { value: value.trim(), label: label.trim() };
-                });
-                config = { options };
-            } else if (type === 'multi_choice') {
-                const optionsText = document.getElementById('options').value;
-                const options = optionsText.split('\n').filter(line => line.trim()).map(line => {
-                    const [value, label] = line.split('|');
-                    return { value: value.trim(), label: label.trim() };
-                });
-                const minSelect = parseInt(document.getElementById('minSelect').value);
-                const maxSelect = parseInt(document.getElementById('maxSelect').value);
-                config = { options, minSelect, maxSelect };
-            } else if (type === 'text') {
-                const minLength = parseInt(document.getElementById('minLength').value);
-                const maxLength = parseInt(document.getElementById('maxLength').value);
-                config = { minLength, maxLength };
-            } else if (type === 'number') {
-                const minValue = document.getElementById('minValue').value ? parseFloat(document.getElementById('minValue').value) : undefined;
-                const maxValue = document.getElementById('maxValue').value ? parseFloat(document.getElementById('maxValue').value) : undefined;
-                const integerOnly = document.getElementById('integerOnly').checked;
-                config = { minValue, maxValue, integerOnly };
-            }
-            
-            await addQuestion(questionId, title, type, required, config);
-            closeModal();
-        });
-        
-        document.getElementById('logicForm').addEventListener('submit', async (e) => {
-            e.preventDefault();
-            
-            const sourceQuestionId = document.getElementById('logicSource').value;
-            const condType = document.getElementById('condType').value;
-            const targetQuestionId = document.getElementById('logicTarget').value;
-            const priority = parseInt(document.getElementById('logicPriority').value);
-            
-            let conditions = [];
-            
-            if (condType === 'option_selected') {
-                const optionValue = document.getElementById('optionValue').value;
-                conditions = [{ type: 'option_selected', optionValue }];
-            } else if (condType === 'option_any') {
-                const optionValue = document.getElementById('optionValue').value;
-                conditions = [{ type: 'option_any', optionValue }];
-            } else if (condType === 'value_range') {
-                const min = parseFloat(document.getElementById('minValue').value);
-                const max = parseFloat(document.getElementById('maxValue').value);
-                conditions = [{ type: 'value_range', min, max }];
-            }
-            
-            await addLogic(sourceQuestionId, conditions, targetQuestionId, priority);
-            closeLogicModal();
-        });
-        
-        async function addQuestion(questionId, title, type, required, config) {
-            try {
-                const res = await fetch(`${API_BASE}/add-question`, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'Authorization': `Bearer ${token}`
-                    },
-                    body: JSON.stringify({
-                        surveyId: currentSurvey.surveyId,
-                        questionId: questionId,
-                        title: title,
-                        type: type,
-                        required: required,
-                        config: config
-                    })
-                });
-                
-                const data = await res.json();
-                
-                if (data.success) {
-                    showMessage('✅ 题目添加成功！', 'success');
-                    loadSurvey();
-                } else {
-                    showMessage('❌ 添加失败：' + (data.error || '未知错误'), 'error');
-                }
-            } catch (err) {
-                showMessage('❌ 网络错误：' + err.message, 'error');
-            }
-        }
-        
-        async function addLogic(sourceQuestionId, conditions, targetQuestionId, priority) {
-            try {
-                const res = await fetch(`${API_BASE}/add-logic`, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'Authorization': `Bearer ${token}`
-                    },
-                    body: JSON.stringify({
-                        surveyId: currentSurvey.surveyId,
-                        sourceQuestionId: sourceQuestionId,
-                        conditions: conditions,
-                        targetQuestionId: targetQuestionId,
-                        priority: priority
-                    })
-                });
-                
-                const data = await res.json();
-                
-                if (data.success) {
-                    showMessage('✅ 跳转逻辑添加成功！', 'success');
-                    loadSurvey();
-                } else {
-                    showMessage('❌ 添加失败：' + (data.error || '未知错误'), 'error');
-                }
-            } catch (err) {
-                showMessage('❌ 网络错误：' + err.message, 'error');
-            }
-        }
-        
         async function deleteQuestion(questionId) {
-            if (!confirm(`确定要删除题目 ${questionId} 吗？`)) return;
+            if (!confirm(`确定要从问卷中移除该题目吗？\n注意：只从当前问卷移除，不会删除题库中的题目。`)) return;
             
             try {
-                const res = await fetch(`${API_BASE}/delete-question`, {
-                    method: 'DELETE',
+                // 获取当前问卷的所有题目，过滤掉要删除的
+                const updatedQuestions = currentSurvey.questions.filter(q => q.questionId !== questionId);
+                
+                const res = await fetch(`${API_BASE}/update-survey-questions`, {
+                    method: 'PUT',
                     headers: {
                         'Content-Type': 'application/json',
                         'Authorization': `Bearer ${token}`
                     },
                     body: JSON.stringify({
                         surveyId: currentSurvey.surveyId,
-                        questionId: questionId
+                        questions: updatedQuestions
                     })
                 });
                 
                 const data = await res.json();
                 
                 if (data.success) {
-                    showMessage('✅ 题目删除成功！', 'success');
+                    showMessage('✅ 题目已从问卷中移除！', 'success');
                     loadSurvey();
                 } else {
-                    showMessage('❌ 删除失败：' + (data.error || '未知错误'), 'error');
-                }
-            } catch (err) {
-                showMessage('❌ 网络错误：' + err.message, 'error');
-            }
-        }
-        
-        async function deleteLogic(questionId, logicIndex) {
-            if (!confirm(`确定要删除此跳转逻辑吗？`)) return;
-            
-            try {
-                const res = await fetch(`${API_BASE}/delete-logic`, {
-                    method: 'DELETE',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'Authorization': `Bearer ${token}`
-                    },
-                    body: JSON.stringify({
-                        surveyId: currentSurvey.surveyId,
-                        questionId: questionId,
-                        logicIndex: logicIndex
-                    })
-                });
-                
-                const data = await res.json();
-                
-                if (data.success) {
-                    showMessage('✅ 跳转逻辑删除成功！', 'success');
-                    loadSurvey();
-                } else {
-                    showMessage('❌ 删除失败：' + (data.error || '未知错误'), 'error');
+                    showMessage('❌ 移除失败：' + (data.error || '未知错误'), 'error');
                 }
             } catch (err) {
                 showMessage('❌ 网络错误：' + err.message, 'error');
@@ -885,14 +450,8 @@
             });
         }
         
+        // 启动
         loadSurvey();
-        
-        window.onclick = function(event) {
-            const modal = document.getElementById('questionModal');
-            const logicModal = document.getElementById('logicModal');
-            if (event.target === modal) closeModal();
-            if (event.target === logicModal) closeLogicModal();
-        }
     </script>
 </body>
 </html>   
