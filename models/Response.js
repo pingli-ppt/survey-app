@@ -23,16 +23,28 @@ const ResponseSchema = new mongoose.Schema({
     type: mongoose.Schema.Types.ObjectId,
     ref: "User"
   },
-  respondentName: String,
+  respondentName: {
+    type: String,
+    default: ""
+  },
   isAnonymous: {
     type: Boolean,
     default: false
   },
   answers: [AnswerSchema],
-  ipAddress: String,
-  userAgent: String
+  ipAddress: {
+    type: String,
+    default: ""
+  },
+  userAgent: {
+    type: String,
+    default: ""
+  }
 }, {
   timestamps: { createdAt: true, updatedAt: false }
 });
+
+ResponseSchema.index({ surveyId: 1 });
+ResponseSchema.index({ "answers.questionId": 1 });
 
 module.exports = mongoose.model("Response", ResponseSchema);

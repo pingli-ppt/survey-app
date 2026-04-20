@@ -28,6 +28,8 @@
             display: flex;
             justify-content: space-between;
             align-items: center;
+            flex-wrap: wrap;
+            gap: 15px;
         }
         .back-btn {
             background: rgba(255,255,255,0.2);
@@ -65,6 +67,8 @@
             justify-content: space-between;
             align-items: center;
             margin-bottom: 10px;
+            flex-wrap: wrap;
+            gap: 10px;
         }
         .question-id {
             font-weight: bold;
@@ -207,6 +211,7 @@
             display: flex;
             gap: 10px;
             margin-top: 10px;
+            flex-wrap: wrap;
         }
         .share-link input {
             flex: 1;
@@ -219,20 +224,17 @@
             border-radius: 8px;
             cursor: pointer;
         }
-        .test-jump-btn {
-            background: #6c757d;
-            color: white;
-            border: none;
-            padding: 5px 10px;
-            border-radius: 4px;
-            cursor: pointer;
-            font-size: 12px;
-        }
         .question-config {
             margin-top: 10px;
             padding: 10px;
             background: white;
             border-radius: 8px;
+        }
+        @media (max-width: 768px) {
+            .question-header {
+                flex-direction: column;
+                align-items: flex-start;
+            }
         }
     </style>
 </head>
@@ -247,7 +249,6 @@
         </div>
     </div>
 
-    <!-- 添加题目模态框 -->
     <div id="questionModal" class="modal">
         <div class="modal-content">
             <div class="modal-header">
@@ -284,7 +285,6 @@
         </div>
     </div>
 
-    <!-- 添加跳转逻辑模态框 -->
     <div id="logicModal" class="modal">
         <div class="modal-content">
             <div class="modal-header">
@@ -301,8 +301,6 @@
                     <select id="condType" required onchange="onCondTypeChange()">
                         <option value="option_selected">选项被选中（单选）</option>
                         <option value="option_any">包含任意选项（多选）</option>
-                        <option value="option_all">必须包含所有选项（多选）</option>   <!-- 新增 -->
-                        <option value="option_exact">完全匹配选项组合（多选）</option> <!-- 新增 -->
                         <option value="value_range">数值范围</option>
                     </select>
                 </div>
@@ -329,7 +327,6 @@
         }
         
         let currentSurvey = null;
-        let currentQuestionForLogic = null;
         
         function getUrlParams() {
             const params = {};
@@ -402,7 +399,6 @@
                                 ${q.required ? '<span style="color:red;">*必填</span>' : ''}
                             </div>
                             <div>
-                                <button class="edit-question-btn" onclick="editQuestion('${q.questionId}')">✏️ 编辑</button>
                                 <button class="delete-btn" onclick="deleteQuestion('${q.questionId}')">删除</button>
                             </div>
                         </div>
@@ -459,7 +455,6 @@
                 </div>
             `;
         }
-
         
         function renderQuestionConfig(q) {
             let html = '<div class="question-config">';
@@ -575,56 +570,21 @@
             const condType = document.getElementById('condType').value;
             const condConfigArea = document.getElementById('condConfigArea');
 
-            // 获取当前题目的选项
-            const question = window.currentQuestion; 
-            const options = question?.config?.options || [];
-
             if (condType === 'option_selected') {
                 condConfigArea.innerHTML = `
                     <div class="form-group">
                         <label>选择跳转选项</label>
-                        <select id="optionValue" required>
-                            ${options.map(o => `<option value="${o.value}">${o.label}</option>`).join('')}
-                        </select>
+                        <input type="text" id="optionValue" required placeholder="选项的值">
                     </div>
                 `;
-            }
-            else if (condType === 'option_any') {
+            } else if (condType === 'option_any') {
                 condConfigArea.innerHTML = `
                     <div class="form-group">
-                        <label>选中此选项即触发跳转（多选题目中）</label>
-                        <select id="optionValue" required>
-                            ${options.map(o => `<option value="${o.value}">${o.label}</option>`).join('')}
-                        </select>
+                        <label>选中此选项即触发跳转</label>
+                        <input type="text" id="optionValue" required placeholder="选项的值">
                     </div>
                 `;
-            }
-
-            // 全部包含
-            else if (condType === 'option_all') {
-                condConfigArea.innerHTML = `
-                    <div class="form-group">
-                        <label>必须包含这些选项</label>
-                        <select id="optionValues" multiple size="5">
-                            ${options.map(o => `<option value="${o.value}">${o.label}</option>`).join('')}
-                        </select>
-                    </div>
-                `;
-            }
-
-            // 完全匹配
-            else if (condType === 'option_exact') {
-                condConfigArea.innerHTML = `
-                    <div class="form-group">
-                        <label>完全匹配（选项组合必须一致）</label>
-                        <select id="optionValues" multiple size="5">
-                            ${options.map(o => `<option value="${o.value}">${o.label}</option>`).join('')}
-                        </select>
-                    </div>
-                `;
-            }
-
-            else if (condType === 'value_range') {
+            } else if (condType === 'value_range') {
                 condConfigArea.innerHTML = `
                     <div class="form-group">
                         <label>最小值</label>
@@ -649,11 +609,6 @@
         }
         
         function showAddLogicDialog(questionId) {
-            currentQuestionForLogic = questionId;
-            
-            // 给全局变量 currentQuestion 赋值
-            window.currentQuestion = currentSurvey.questions.find(q => q.questionId === questionId);
-            // 填充题目下拉框
             const sourceSelect = document.getElementById('logicSource');
             const targetSelect = document.getElementById('logicTarget');
             
@@ -674,7 +629,6 @@
             document.getElementById('logicModal').style.display = 'none';
         }
         
-        // 表单提交事件
         document.getElementById('questionForm').addEventListener('submit', async (e) => {
             e.preventDefault();
             
@@ -729,20 +683,10 @@
             if (condType === 'option_selected') {
                 const optionValue = document.getElementById('optionValue').value;
                 conditions = [{ type: 'option_selected', optionValue }];
-            } 
-            else if (condType === 'option_any') {
+            } else if (condType === 'option_any') {
                 const optionValue = document.getElementById('optionValue').value;
                 conditions = [{ type: 'option_any', optionValue }];
-            }
-            else if (condType === 'option_all') {
-                const optionValues = Array.from(document.getElementById('optionValues').selectedOptions).map(o => o.value);
-                conditions = [{ type: 'option_all', optionValues }];
-            }
-            else if (condType === 'option_exact') {
-                const optionValues = Array.from(document.getElementById('optionValues').selectedOptions).map(o => o.value);
-                conditions = [{ type: 'option_exact', optionValues }];
-            }
-            else if (condType === 'value_range') {
+            } else if (condType === 'value_range') {
                 const min = parseFloat(document.getElementById('minValue').value);
                 const max = parseFloat(document.getElementById('maxValue').value);
                 conditions = [{ type: 'value_range', min, max }];
@@ -750,7 +694,7 @@
             
             await addLogic(sourceQuestionId, conditions, targetQuestionId, priority);
             closeLogicModal();
-        });     
+        });
         
         async function addQuestion(questionId, title, type, required, config) {
             try {
@@ -921,13 +865,6 @@
             showMessage('✅ 链接已复制！', 'success');
         }
         
-        function editQuestion(questionId) {
-            const q = currentSurvey.questions.find(q => q.questionId === questionId);
-            if (!q) return;
-            
-            alert(`编辑功能开发中\n\n当前题目信息：\nID: ${q.questionId}\n标题: ${q.title}\n类型: ${q.type}\n必填: ${q.required}`);
-        }
-        
         function getTypeName(type) {
             const types = {
                 'single_choice': '单选题',
@@ -948,10 +885,8 @@
             });
         }
         
-        // 启动
         loadSurvey();
         
-        // 点击模态框外部关闭
         window.onclick = function(event) {
             const modal = document.getElementById('questionModal');
             const logicModal = document.getElementById('logicModal');
@@ -960,4 +895,4 @@
         }
     </script>
 </body>
-</html>
+</html>   

@@ -28,6 +28,8 @@
             display: flex;
             justify-content: space-between;
             align-items: center;
+            flex-wrap: wrap;
+            gap: 15px;
         }
         .back-btn {
             background: rgba(255,255,255,0.2);
@@ -70,6 +72,7 @@
             display: flex;
             align-items: center;
             gap: 10px;
+            flex-wrap: wrap;
         }
         .option-label {
             width: 150px;
@@ -77,6 +80,7 @@
         }
         .bar {
             flex: 1;
+            min-width: 150px;
             height: 30px;
             background: #e9ecef;
             border-radius: 15px;
@@ -122,13 +126,14 @@
             border-radius: 8px;
             margin-bottom: 15px;
         }
-        .debug-info {
-            background: #e9ecef;
-            padding: 10px;
-            border-radius: 8px;
-            font-family: monospace;
-            font-size: 12px;
-            margin-top: 15px;
+        @media (max-width: 768px) {
+            .option-bar {
+                flex-direction: column;
+                align-items: flex-start;
+            }
+            .bar {
+                width: 100%;
+            }
         }
     </style>
 </head>
@@ -153,9 +158,7 @@
                 const pairs = query.split('&');
                 for (const pair of pairs) {
                     const [key, value] = pair.split('=');
-                    if (key) {
-                        params[decodeURIComponent(key)] = decodeURIComponent(value || '');
-                    }
+                    if (key) params[decodeURIComponent(key)] = decodeURIComponent(value || '');
                 }
             }
             return params;
@@ -166,15 +169,6 @@
             const surveyId = params.surveyId;
             const token = localStorage.getItem('token');
             
-            console.log('URL参数:', params);
-            console.log('surveyId:', surveyId);
-            console.log('token:', token ? '存在' : '不存在');
-            
-            // 显示调试信息
-            const debugDiv = document.createElement('div');
-            debugDiv.className = 'debug-info';
-            debugDiv.innerHTML = `调试信息：<br>URL: ${window.location.href}<br>surveyId: ${surveyId || '未找到'}<br>token: ${token ? '已登录' : '未登录'}`;
-            
             if (!token) {
                 document.getElementById('content').innerHTML = `
                     <div class="card">
@@ -182,7 +176,6 @@
                         <a href="/">返回首页</a>
                     </div>
                 `;
-                document.getElementById('content').appendChild(debugDiv);
                 return;
             }
             
@@ -194,7 +187,6 @@
                         <a href="/dashboard.html" class="back-btn" style="display:inline-block;margin-top:15px;">返回控制台</a>
                     </div>
                 `;
-                document.getElementById('content').appendChild(debugDiv);
                 return;
             }
             
@@ -207,7 +199,6 @@
                 });
                 
                 const data = await res.json();
-                console.log('API响应:', data);
                 
                 if (!data.success) {
                     throw new Error(data.error || '加载失败');
@@ -218,21 +209,14 @@
                 document.getElementById('content').innerHTML = `
                     <div class="card">
                         <div class="error">❌ 加载失败：${err.message}</div>
-                        <p>请确保：</p>
-                        <ul style="margin-left: 20px; margin-top: 10px;">
-                            <li>您有权限查看此问卷</li>
-                            <li>问卷ID正确</li>
-                            <li>后端服务正常运行</li>
-                        </ul>
                         <a href="/dashboard.html" class="back-btn" style="display:inline-block;margin-top:15px;">返回控制台</a>
                     </div>
                 `;
-                document.getElementById('content').appendChild(debugDiv);
             }
         }
         
         function renderStats(stats, surveyId) {
-            if (!stats || !stats.questions) {
+            if (!stats || !stats.questions || Object.keys(stats.questions).length === 0) {
                 document.getElementById('content').innerHTML = `
                     <div class="card">
                         <div class="error">❌ 暂无统计数据</div>
@@ -355,7 +339,6 @@
             });
         }
         
-        // 页面加载时执行
         loadStats();
     </script>
 </body>

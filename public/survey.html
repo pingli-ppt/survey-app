@@ -234,12 +234,6 @@
             text-decoration: none;
             border-radius: 8px;
         }
-        footer {
-            text-align: center;
-            margin-top: 30px;
-            color: rgba(255,255,255,0.7);
-            font-size: 13px;
-        }
         @media (max-width: 600px) {
             body {
                 padding: 20px 15px;
@@ -301,13 +295,12 @@
                 }
                 
                 surveyData = data.survey;
-                surveyData.surveyId = surveyId;          // 保存问卷ID
-                surveyData.questionIndexMap = {};        // 建立 questionId -> 索引 的映射
+                surveyData.surveyId = surveyId;
+                surveyData.questionIndexMap = {};
                 surveyData.questions.forEach((q, idx) => {
                     surveyData.questionIndexMap[q.questionId] = idx;
                 });
                 
-                // 初始化答案
                 surveyData.questions.forEach(q => {
                     if (q.type === 'multi_choice') {
                         answers[q.questionId] = [];
@@ -376,14 +369,11 @@
             `;
             
             document.getElementById('app').innerHTML = html;
-            
-            // 恢复已填写的答案
             restoreAnswer(currentQ);
         }
         
         function renderQuestion(question) {
             const errorClass = errorStates[question.questionId] ? 'error' : '';
-            const hasError = errorStates[question.questionId];
             
             let content = '';
             
@@ -412,7 +402,7 @@
                         <span class="question-type-badge">${getTypeName(question.type)}</span>
                     </div>
                     ${content}
-                    <div class="error-msg" id="error-${question.questionId}">${hasError || ''}</div>
+                    <div class="error-msg" id="error-${question.questionId}">${errorStates[question.questionId] || ''}</div>
                 </div>
             `;
         }
@@ -502,8 +492,6 @@
             }
             delete errorStates[questionId];
             validateQuestion(questionId);
-            // 答案改变后，触发跳转逻辑
-            afterAnswerChanged(questionId);
         }
 
         function toggleMultiChoice(questionId, value, checked) {
@@ -516,47 +504,13 @@
             answers[questionId] = current;
             delete errorStates[questionId];
             validateQuestion(questionId);
-            afterAnswerChanged(questionId);
-        }
-
-        async function afterAnswerChanged(questionId) {
-            // 获取当前题目的答案（标准化格式）
-            const answer = answers[questionId];
-            let answerForJump = answer;
-            const question = surveyData.questions.find(q => q.questionId === questionId);
-            if (question.type === 'multi_choice') {
-                // 多选答案已经是数组，直接使用
-                answerForJump = answer || [];
-            } else if (question.type === 'number') {
-                answerForJump = answer !== undefined && answer !== '' ? Number(answer) : null;
-            } else {
-                answerForJump = answer || '';
-            }
-
-            const nextId = await getNextQuestionId(questionId, answerForJump);
-            if (nextId) {
-                const targetIndex = surveyData.questionIndexMap[nextId];
-                if (targetIndex !== undefined && targetIndex !== currentIndex) {
-                    currentIndex = targetIndex;
-                    renderQuestionnaire();
-                    window.scrollTo({ top: 0, behavior: 'smooth' });
-                    return;
-                }
-            }
-            // 如果没有跳转目标，且当前题目验证通过，并且是用户主动触发的（不是初始化），可以自动进入下一题
-            // 但为了避免干扰用户填写，我们不在每次输入时自动跳转，只保留“下一题”按钮的跳转。
-            // 所以这里只做跳转，不做自动下一题。
         }
         
         function restoreAnswer(question) {
             const value = answers[question.questionId];
             if (!value) return;
             
-            if (question.type === 'single_choice') {
-                // 单选已经通过 checked 属性恢复了
-            } else if (question.type === 'multi_choice') {
-                // 多选已经通过 checked 属性恢复了
-            } else if (question.type === 'text') {
+            if (question.type === 'text') {
                 const input = document.getElementById(`text-${question.questionId}`);
                 if (input) input.value = value;
             } else if (question.type === 'number') {
@@ -572,19 +526,16 @@
             const answer = answers[questionId];
             const isEmpty = answer === undefined || answer === null || answer === '' || (Array.isArray(answer) && answer.length === 0);
             
-            // 必填验证
             if (question.required && isEmpty) {
                 errorStates[questionId] = '此题为必填项';
                 return false;
             }
             
-            // 非必填且为空，跳过其他验证
             if (isEmpty) {
                 delete errorStates[questionId];
                 return true;
             }
             
-            // 多选数量验证
             if (question.type === 'multi_choice' && Array.isArray(answer)) {
                 const config = question.config || {};
                 if (config.minSelect && answer.length < config.minSelect) {
@@ -597,7 +548,6 @@
                 }
             }
             
-            // 数字范围验证
             if (question.type === 'number') {
                 const num = Number(answer);
                 const config = question.config || {};
@@ -620,7 +570,6 @@
                 }
             }
             
-            // 文本长度验证
             if (question.type === 'text') {
                 const len = String(answer).length;
                 const config = question.config || {};
@@ -656,7 +605,6 @@
                 return;
             }
 
-            // 获取当前题目的答案
             const answer = answers[currentQ.questionId];
             let answerForJump = answer;
             if (currentQ.type === 'multi_choice') {
@@ -678,7 +626,6 @@
                 }
             }
 
-            // 默认：下一题
             if (currentIndex < surveyData.questions.length - 1) {
                 currentIndex++;
                 renderQuestionnaire();
@@ -703,7 +650,6 @@
             const params = getUrlParams();
             const surveyId = params.surveyId;
             
-            // 构建答案数组
             const answersArray = Object.entries(answers).map(([questionId, value]) => ({
                 questionId,
                 value
@@ -776,7 +722,6 @@
             });
         }
         
-        // 启动
         loadSurvey();
     </script>
 </body>

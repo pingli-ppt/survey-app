@@ -1,56 +1,24 @@
 const mongoose = require("mongoose");
 
-// 题目配置结构
-const QuestionSchema = new mongoose.Schema({
-  questionId: {
+// 问卷中的题目关联结构
+const SurveyQuestionSchema = new mongoose.Schema({
+  questionBankId: {
     type: String,
     required: true
   },
-  title: {
+  versionId: {
     type: String,
-    default: ""
-  },
-  type: {
-    type: String,
-    enum: ["single_choice", "multi_choice", "text", "number"],
     required: true
-  },
-  required: {
-    type: Boolean,
-    default: false
   },
   order: {
     type: Number,
     default: 0
   },
-  config: {
-    options: [{
-      value: String,
-      label: String
-    }],
-    minSelect: Number,
-    maxSelect: Number,
-    minLength: Number,
-    maxLength: Number,
-    minValue: Number,
-    maxValue: Number,
-    integerOnly: Boolean
-  },
-  logic: [{
-    conditions: [{
-      type: {
-        type: String, 
-      },
-      optionValue: String,
-      optionValues: [String],
-      operator: String,  // equals, contains, range
-      min: Number,
-      max: Number
-    }],
-    targetQuestionId: String,
-    priority: Number
-  }]
-});
+  logic: {
+    type: Object,
+    default: null
+  }
+}, { _id: false });
 
 const SurveySchema = new mongoose.Schema({
   surveyId: {
@@ -62,7 +30,10 @@ const SurveySchema = new mongoose.Schema({
     type: String,
     required: true
   },
-  description: String,
+  description: {
+    type: String,
+    default: ""
+  },
   allowAnonymous: {
     type: Boolean,
     default: false
@@ -76,18 +47,20 @@ const SurveySchema = new mongoose.Schema({
     enum: ["draft", "published", "closed"],
     default: "draft"
   },
-  deadline: Date,
+  deadline: {
+    type: Date,
+    default: null
+  },
   creatorId: {
     type: mongoose.Schema.Types.ObjectId,
     ref: "User",
     required: true
   },
-  questions: [QuestionSchema]
+  questions: [SurveyQuestionSchema]
 }, {
   timestamps: true
 });
 
-// 生成唯一 surveyId
 SurveySchema.statics.generateSurveyId = function() {
   return `SURVEY_${Date.now()}_${Math.random().toString(36).substr(2, 8)}`;
 };

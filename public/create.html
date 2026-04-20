@@ -17,16 +17,17 @@
             padding: 20px;
         }
         .container {
-            max-width: 600px;
+            max-width: 800px;
             margin: 0 auto;
         }
         .card {
             background: white;
             border-radius: 16px;
             padding: 30px;
+            margin-bottom: 20px;
             box-shadow: 0 10px 40px rgba(0,0,0,0.2);
         }
-        h1 {
+        h1, h2 {
             margin-bottom: 10px;
             color: #333;
         }
@@ -65,15 +66,13 @@
             width: auto;
         }
         button {
-            width: 100%;
-            padding: 12px;
+            padding: 12px 24px;
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             color: white;
             border: none;
             border-radius: 8px;
             font-size: 16px;
             cursor: pointer;
-            margin-top: 20px;
         }
         button:hover {
             opacity: 0.9;
@@ -103,10 +102,87 @@
             border-radius: 8px;
             margin-bottom: 20px;
         }
-        .loading {
-            text-align: center;
-            padding: 20px;
+        .question-list {
+            margin-top: 20px;
+            border: 1px solid #eee;
+            border-radius: 8px;
+            max-height: 300px;
+            overflow-y: auto;
+        }
+        .question-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 12px;
+            border-bottom: 1px solid #eee;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+        .question-item:hover {
+            background: #f8f9fa;
+        }
+        .question-item.selected {
+            background: #d4edda;
+            border-left: 4px solid #28a745;
+        }
+        .question-info {
+            flex: 1;
+        }
+        .question-title {
+            font-weight: 500;
+            margin-bottom: 4px;
+        }
+        .question-meta {
+            font-size: 12px;
             color: #999;
+        }
+        .question-check {
+            width: 24px;
+            height: 24px;
+        }
+        .selected-questions {
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 8px;
+            margin-top: 15px;
+        }
+        .selected-tag {
+            display: inline-block;
+            background: #667eea;
+            color: white;
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 12px;
+            margin: 4px;
+        }
+        .remove-tag {
+            cursor: pointer;
+            margin-left: 6px;
+            font-weight: bold;
+        }
+        .tabs {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+            border-bottom: 2px solid #eee;
+        }
+        .tab {
+            padding: 10px 20px;
+            cursor: pointer;
+            color: #666;
+        }
+        .tab.active {
+            color: #667eea;
+            border-bottom: 2px solid #667eea;
+        }
+        .btn-secondary {
+            background: #6c757d;
+            margin-left: 10px;
+        }
+        .flex-buttons {
+            display: flex;
+            gap: 15px;
+            margin-top: 20px;
         }
     </style>
 </head>
@@ -114,7 +190,7 @@
     <div class="container">
         <div class="card">
             <h1>📝 创建新问卷</h1>
-            <div class="subtitle">填写问卷基本信息，稍后可以添加题目</div>
+            <div class="subtitle">填写基本信息，然后从题库中选择题目</div>
             
             <div id="message"></div>
             
@@ -147,89 +223,273 @@
                     <label>截止日期（可选）</label>
                     <input type="datetime-local" id="deadline">
                 </div>
-                
-                <button type="submit" id="submitBtn">创建问卷 →</button>
             </form>
         </div>
+        
+        <div class="card">
+            <h2>📚 选择题目</h2>
+            <div class="tabs">
+                <div class="tab active" onclick="switchTab('my')">我的题目</div>
+                <div class="tab" onclick="switchTab('shared')">共享给我的</div>
+            </div>
+            
+            <div id="questionLoading" style="text-align:center;padding:20px;">加载题目中...</div>
+            <div id="questionList" class="question-list" style="display:none;"></div>
+            
+            <div id="selectedContainer" class="selected-questions" style="display:none;">
+                <strong>已选题目：</strong>
+                <div id="selectedTags"></div>
+            </div>
+            
+            <div class="flex-buttons">
+                <button type="button" class="btn-secondary" onclick="location.href='/question-bank.html'">📚 管理题库</button>
+                <button type="button" id="createBtn" onclick="createSurvey()" style="flex:1;">创建问卷 →</button>
+            </div>
+        </div>
+        
         <a href="/dashboard.html" class="back-link">← 返回控制台</a>
     </div>
     
     <script>
         const API_BASE = '/api';
-        
-        // 检查登录状态
         const token = localStorage.getItem('token');
+        
         if (!token) {
             window.location.href = '/';
         }
         
-        const form = document.getElementById('createForm');
-        const submitBtn = document.getElementById('submitBtn');
-        const messageDiv = document.getElementById('message');
+        let currentTab = 'my';
+        let myQuestions = [];
+        let sharedQuestions = [];
+        let selectedQuestions = [];  // 存储选中的 { versionId, title, type }
         
-        form.addEventListener('submit', async (e) => {
-            e.preventDefault();
+        async function loadMyQuestions() {
+            try {
+                const res = await fetch(`${API_BASE}/questions/my-questions`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                const data = await res.json();
+                if (data.success) {
+                    myQuestions = data.questions;
+                    return myQuestions;
+                }
+                return [];
+            } catch (err) {
+                console.error('加载我的题目失败:', err);
+                return [];
+            }
+        }
+        
+        async function loadSharedQuestions() {
+            try {
+                const res = await fetch(`${API_BASE}/questions/shared-questions`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                const data = await res.json();
+                if (data.success) {
+                    sharedQuestions = data.questions;
+                    return sharedQuestions;
+                }
+                return [];
+            } catch (err) {
+                console.error('加载共享题目失败:', err);
+                return [];
+            }
+        }
+        
+        async function loadAllQuestions() {
+            document.getElementById('questionLoading').style.display = 'block';
+            document.getElementById('questionList').style.display = 'none';
             
+            await loadMyQuestions();
+            await loadSharedQuestions();
+            
+            document.getElementById('questionLoading').style.display = 'none';
+            document.getElementById('questionList').style.display = 'block';
+            
+            renderQuestionList();
+        }
+        
+        function renderQuestionList() {
+            const questions = currentTab === 'my' ? myQuestions : sharedQuestions;
+            const container = document.getElementById('questionList');
+            
+            if (!questions || questions.length === 0) {
+                container.innerHTML = `
+                    <div style="text-align:center;padding:40px;color:#999;">
+                        <p>暂无题目</p>
+                        <button class="btn-secondary" onclick="location.href='/question-bank.html'" style="margin-top:10px;">去创建题目</button>
+                    </div>
+                `;
+                return;
+            }
+            
+            container.innerHTML = questions.map(q => {
+                const isSelected = selectedQuestions.some(sq => sq.baseId === q.baseId);
+                return `
+                    <div class="question-item ${isSelected ? 'selected' : ''}" onclick="toggleSelectQuestion('${q.baseId}', '${escapeHtml(q.title)}', '${q.type}')">
+                        <div class="question-info">
+                            <div class="question-title">${escapeHtml(q.title)}</div>
+                            <div class="question-meta">
+                                ${getTypeName(q.type)} | v${q.currentVersion} | 使用 ${q.usageCount || 0} 次
+                            </div>
+                        </div>
+                        <div class="question-check">
+                            ${isSelected ? '✓' : ''}
+                        </div>
+                    </div>
+                `;
+            }).join('');
+            
+            renderSelectedTags();
+        }
+        
+        function toggleSelectQuestion(baseId, title, type) {
+            const existingIndex = selectedQuestions.findIndex(sq => sq.baseId === baseId);
+            
+            if (existingIndex !== -1) {
+                // 取消选择
+                selectedQuestions.splice(existingIndex, 1);
+            } else {
+                // 添加选择
+                selectedQuestions.push({ baseId, title, type });
+            }
+            
+            renderQuestionList();
+        }
+        
+        function renderSelectedTags() {
+            const container = document.getElementById('selectedContainer');
+            const tagsContainer = document.getElementById('selectedTags');
+            
+            if (selectedQuestions.length === 0) {
+                container.style.display = 'none';
+                return;
+            }
+            
+            container.style.display = 'block';
+            tagsContainer.innerHTML = selectedQuestions.map(sq => `
+                <span class="selected-tag">
+                    ${escapeHtml(sq.title)} (${getTypeName(sq.type)})
+                    <span class="remove-tag" onclick="event.stopPropagation(); toggleSelectQuestion('${sq.baseId}', '${escapeHtml(sq.title)}', '${sq.type}')">✕</span>
+                </span>
+            `).join('');
+        }
+        
+        function switchTab(tab) {
+            currentTab = tab;
+            document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+            if (tab === 'my') {
+                document.querySelector('.tab:first-child').classList.add('active');
+            } else {
+                document.querySelector('.tab:last-child').classList.add('active');
+            }
+            renderQuestionList();
+        }
+        
+        async function createSurvey() {
             const title = document.getElementById('title').value.trim();
             if (!title) {
                 showMessage('请填写问卷标题', 'error');
                 return;
             }
             
-            const data = {
+            if (selectedQuestions.length === 0) {
+                showMessage('请至少选择一个题目', 'error');
+                return;
+            }
+            
+            // 获取每个题目的最新版本
+            const selectedVersions = [];
+            for (const sq of selectedQuestions) {
+                // 获取题目的最新版本ID
+                const res = await fetch(`${API_BASE}/questions/${sq.baseId}`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                const data = await res.json();
+                if (data.success && data.data.current) {
+                    selectedVersions.push({
+                        versionId: data.data.current.versionId,
+                        baseId: sq.baseId
+                    });
+                }
+            }
+            
+            const surveyData = {
                 title: title,
                 description: document.getElementById('description').value.trim(),
                 allowAnonymous: document.getElementById('allowAnonymous').checked,
                 allowMultipleSubmit: document.getElementById('allowMultipleSubmit').checked,
-                deadline: document.getElementById('deadline').value || null
+                deadline: document.getElementById('deadline').value || null,
+                selectedQuestions: selectedVersions
             };
             
-            submitBtn.disabled = true;
-            submitBtn.textContent = '创建中...';
-            showMessage('正在创建问卷...', 'loading');
+            const createBtn = document.getElementById('createBtn');
+            createBtn.disabled = true;
+            createBtn.textContent = '创建中...';
             
             try {
-                const res = await fetch(`${API_BASE}/create-survey`, {
+                const res = await fetch(`${API_BASE}/questions/create-survey-from-bank`, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
                         'Authorization': `Bearer ${token}`
                     },
-                    body: JSON.stringify(data)
+                    body: JSON.stringify(surveyData)
                 });
                 
                 const result = await res.json();
                 
                 if (result.success) {
                     showMessage('✅ 问卷创建成功！正在跳转...', 'success');
-                    
-                    // 重要：保存创建的问卷信息
-                    console.log('创建的问卷:', result.survey);
-                    console.log('surveyId:', result.survey.surveyId);
-                    
-                    // 跳转到编辑页面（可以添加题目）
                     setTimeout(() => {
-                        window.location.href = `/edit.html?surveyId=${result.survey.surveyId}`;
+                        window.location.href = `/edit.html?surveyId=${result.data.survey.surveyId}`;
                     }, 1500);
                 } else {
                     showMessage('❌ 创建失败：' + (result.error || '未知错误'), 'error');
-                    submitBtn.disabled = false;
-                    submitBtn.textContent = '创建问卷 →';
+                    createBtn.disabled = false;
+                    createBtn.textContent = '创建问卷 →';
                 }
             } catch (err) {
                 console.error('创建问卷错误:', err);
                 showMessage('❌ 网络错误：' + err.message, 'error');
-                submitBtn.disabled = false;
-                submitBtn.textContent = '创建问卷 →';
-            }
-        });
-        
-        function showMessage(msg, type) {
-            messageDiv.innerHTML = `<div class="${type}-msg">${msg}</div>`;
-            if (type === 'loading') {
-                messageDiv.innerHTML = `<div class="loading">${msg}</div>`;
+                createBtn.disabled = false;
+                createBtn.textContent = '创建问卷 →';
             }
         }
+        
+        function showMessage(msg, type) {
+            const messageDiv = document.getElementById('message');
+            messageDiv.innerHTML = `<div class="${type}-msg">${msg}</div>`;
+            setTimeout(() => {
+                if (messageDiv.innerHTML === `<div class="${type}-msg">${msg}</div>`) {
+                    messageDiv.innerHTML = '';
+                }
+            }, 3000);
+        }
+        
+        function getTypeName(type) {
+            const types = {
+                'single_choice': '单选题',
+                'multi_choice': '多选题',
+                'text': '文本题',
+                'number': '数字题'
+            };
+            return types[type] || type;
+        }
+        
+        function escapeHtml(str) {
+            if (!str) return '';
+            return String(str).replace(/[&<>]/g, function(m) {
+                if (m === '&') return '&amp;';
+                if (m === '<') return '&lt;';
+                if (m === '>') return '&gt;';
+                return m;
+            });
+        }
+        
+        // 初始化
+        loadAllQuestions();
     </script>
 </body>
 </html>

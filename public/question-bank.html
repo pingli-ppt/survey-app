@@ -1,0 +1,429 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>我的题库 - 问卷系统</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f5f5f5; }
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 20px 30px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 15px;
+        }
+        .header h1 { font-size: 24px; }
+        .nav-links { display: flex; gap: 15px; }
+        .nav-links a { color: white; text-decoration: none; padding: 8px 16px; border-radius: 8px; background: rgba(255,255,255,0.2); }
+        .container { max-width: 1200px; margin: 0 auto; padding: 30px 20px; }
+        .actions-bar { margin-bottom: 30px; display: flex; gap: 15px; }
+        .btn { padding: 12px 24px; border: none; border-radius: 8px; cursor: pointer; font-size: 14px; font-weight: 500; }
+        .btn-primary { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; }
+        .btn-secondary { background: #6c757d; color: white; }
+        .question-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(350px, 1fr)); gap: 20px; }
+        .question-card { background: white; border-radius: 12px; padding: 20px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+        .question-title { font-size: 18px; font-weight: 600; color: #333; margin-bottom: 10px; }
+        .question-meta { display: flex; gap: 10px; margin-bottom: 15px; font-size: 12px; color: #999; }
+        .question-type { background: #e9ecef; padding: 2px 8px; border-radius: 4px; }
+        .question-actions { display: flex; gap: 10px; margin-top: 15px; }
+        .question-actions button { flex: 1; padding: 8px 12px; border: none; border-radius: 6px; cursor: pointer; font-size: 13px; }
+        .btn-outline { background: #e9ecef; color: #495057; }
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.5);
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+        }
+        .modal-content {
+            background: white;
+            padding: 30px;
+            border-radius: 12px;
+            max-width: 500px;
+            width: 90%;
+            max-height: 80vh;
+            overflow-y: auto;
+        }
+        .form-group { margin-bottom: 15px; }
+        label { display: block; margin-bottom: 5px; font-weight: 500; }
+        input, select, textarea { width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 8px; font-size: 14px; }
+        .empty-state { text-align: center; padding: 60px 20px; background: white; border-radius: 12px; }
+        .loading { text-align: center; padding: 50px; color: #999; }
+        .toast {
+            position: fixed;
+            bottom: 30px;
+            right: 30px;
+            background: #28a745;
+            color: white;
+            padding: 12px 24px;
+            border-radius: 8px;
+            z-index: 1000;
+            animation: fadeInOut 2s ease;
+        }
+        @keyframes fadeInOut {
+            0% { opacity: 0; transform: translateY(20px); }
+            15% { opacity: 1; transform: translateY(0); }
+            85% { opacity: 1; transform: translateY(0); }
+            100% { opacity: 0; transform: translateY(20px); }
+        }
+        .tabs { display: flex; gap: 10px; margin-bottom: 20px; border-bottom: 2px solid #eee; }
+        .tab { padding: 10px 20px; cursor: pointer; color: #666; }
+        .tab.active { color: #667eea; border-bottom: 2px solid #667eea; }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>📚 我的题库</h1>
+        <div class="nav-links">
+            <a href="/dashboard.html">📋 控制台</a>
+            <a href="/create.html">➕ 创建问卷</a>
+            <a href="#" onclick="logout()">🚪 退出</a>
+        </div>
+    </div>
+    
+    <div class="container">
+        <div class="actions-bar">
+            <button class="btn btn-primary" onclick="showCreateModal()">+ 创建题目</button>
+            <button class="btn btn-secondary" onclick="loadQuestions()">🔄 刷新</button>
+        </div>
+        
+        <div class="tabs">
+            <div class="tab active" onclick="switchTab('my')">我的题目</div>
+            <div class="tab" onclick="switchTab('shared')">共享给我的</div>
+        </div>
+        
+        <div id="questionList">
+            <div class="loading">加载中...</div>
+        </div>
+    </div>
+    
+    <!-- 创建题目模态框 -->
+    <div id="createModal" class="modal">
+        <div class="modal-content">
+            <h2>创建题目</h2>
+            <form id="createForm">
+                <div class="form-group">
+                    <label>题目标题 *</label>
+                    <input type="text" id="qTitle" required>
+                </div>
+                <div class="form-group">
+                    <label>题型 *</label>
+                    <select id="qType" required onchange="updateConfigFields()">
+                        <option value="text">文本题</option>
+                        <option value="number">数字题</option>
+                        <option value="single_choice">单选题</option>
+                        <option value="multi_choice">多选题</option>
+                    </select>
+                </div>
+                <div id="configFields"></div>
+                <button type="submit" class="btn btn-primary" style="width:100%">创建题目</button>
+            </form>
+            <button onclick="closeModal()" style="margin-top:10px;width:100%;padding:10px;background:#6c757d;color:white;border:none;border-radius:8px;cursor:pointer;">取消</button>
+        </div>
+    </div>
+    
+    <script>
+        const API_BASE = '/api';
+        const token = localStorage.getItem('token');
+        
+        if (!token) {
+            window.location.href = '/';
+        }
+        
+        let currentTab = 'my';
+        
+        function showToast(message, isError = false) {
+            const toast = document.createElement('div');
+            toast.className = 'toast';
+            toast.style.background = isError ? '#dc3545' : '#28a745';
+            toast.textContent = message;
+            document.body.appendChild(toast);
+            setTimeout(() => toast.remove(), 3000);
+        }
+        
+        function switchTab(tab) {
+            currentTab = tab;
+            document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+            if (tab === 'my') {
+                document.querySelector('.tab:first-child').classList.add('active');
+                loadMyQuestions();
+            } else {
+                document.querySelector('.tab:last-child').classList.add('active');
+                loadSharedQuestions();
+            }
+        }
+        
+        async function loadQuestions() {
+            if (currentTab === 'my') {
+                loadMyQuestions();
+            } else {
+                loadSharedQuestions();
+            }
+        }
+        
+        async function loadMyQuestions() {
+            try {
+                const res = await fetch(`${API_BASE}/questions/my-questions`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                const data = await res.json();
+                
+                if (data.success) {
+                    renderQuestions(data.questions, true);
+                } else {
+                    throw new Error(data.error);
+                }
+            } catch (err) {
+                document.getElementById('questionList').innerHTML = `
+                    <div class="empty-state">
+                        <p>加载失败：${err.message}</p>
+                        <button class="btn btn-primary" onclick="loadQuestions()">重试</button>
+                    </div>
+                `;
+            }
+        }
+        
+        async function loadSharedQuestions() {
+            try {
+                const res = await fetch(`${API_BASE}/questions/shared-questions`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                const data = await res.json();
+                
+                if (data.success) {
+                    renderQuestions(data.questions, false);
+                } else {
+                    throw new Error(data.error);
+                }
+            } catch (err) {
+                document.getElementById('questionList').innerHTML = `
+                    <div class="empty-state">
+                        <p>加载失败：${err.message}</p>
+                        <button class="btn btn-primary" onclick="loadQuestions()">重试</button>
+                    </div>
+                `;
+            }
+        }
+        
+        function renderQuestions(questions, isOwner) {
+            const container = document.getElementById('questionList');
+            
+            if (!questions || questions.length === 0) {
+                container.innerHTML = `
+                    <div class="empty-state">
+                        <p>暂无题目</p>
+                        <button class="btn btn-primary" onclick="showCreateModal()">创建第一个题目</button>
+                    </div>
+                `;
+                return;
+            }
+            
+            container.innerHTML = `
+                <div class="question-grid">
+                    ${questions.map(q => `
+                        <div class="question-card">
+                            <div class="question-title">${escapeHtml(q.title)}</div>
+                            <div class="question-meta">
+                                <span class="question-type">${getTypeName(q.type)}</span>
+                                <span>v${q.currentVersion}</span>
+                                <span>使用 ${q.usageCount || 0} 次</span>
+                            </div>
+                            <div class="question-actions">
+                                <button class="btn-outline" onclick="viewVersions('${q.baseId}')">📜 版本历史</button>
+                                <button class="btn-outline" onclick="viewUsage('${q.baseId}')">📊 使用情况</button>
+                            </div>
+                        </div>
+                    `).join('')}
+                </div>
+            `;
+        }
+        
+        // 根据题型动态生成配置字段
+        function updateConfigFields() {
+            const type = document.getElementById('qType').value;
+            const container = document.getElementById('configFields');
+            
+            if (type === 'text') {
+                container.innerHTML = `
+                    <div class="form-group">
+                        <label>最小长度</label>
+                        <input type="number" id="minLength" value="0">
+                    </div>
+                    <div class="form-group">
+                        <label>最大长度</label>
+                        <input type="number" id="maxLength" value="500">
+                    </div>
+                `;
+            } else if (type === 'number') {
+                container.innerHTML = `
+                    <div class="form-group">
+                        <label>最小值</label>
+                        <input type="number" id="minValue">
+                    </div>
+                    <div class="form-group">
+                        <label>最大值</label>
+                        <input type="number" id="maxValue">
+                    </div>
+                    <div class="form-group">
+                        <label><input type="checkbox" id="integerOnly"> 只能整数</label>
+                    </div>
+                `;
+            } else if (type === 'single_choice') {
+                container.innerHTML = `
+                    <div class="form-group">
+                        <label>选项（每行一个，格式：值|标签）</label>
+                        <textarea id="options" rows="4" placeholder="male|男&#10;female|女&#10;other|其他"></textarea>
+                    </div>
+                `;
+            } else if (type === 'multi_choice') {
+                container.innerHTML = `
+                    <div class="form-group">
+                        <label>选项（每行一个，格式：值|标签）</label>
+                        <textarea id="options" rows="4" placeholder="apple|苹果&#10;banana|香蕉&#10;orange|橙子"></textarea>
+                    </div>
+                    <div class="form-group">
+                        <label>最少选择数量</label>
+                        <input type="number" id="minSelect" value="1">
+                    </div>
+                    <div class="form-group">
+                        <label>最多选择数量</label>
+                        <input type="number" id="maxSelect" value="3">
+                    </div>
+                `;
+            } else {
+                container.innerHTML = '';
+            }
+        }
+        
+        function showCreateModal() {
+            document.getElementById('createForm').reset();
+            document.getElementById('configFields').innerHTML = '';
+            document.getElementById('createModal').style.display = 'flex';
+            // 设置默认题型为文本题，并生成对应配置字段
+            document.getElementById('qType').value = 'text';
+            updateConfigFields();
+        }
+        
+        function closeModal() {
+            document.getElementById('createModal').style.display = 'none';
+        }
+        
+        function viewVersions(baseId) {
+            window.location.href = `/question-versions.html?baseId=${baseId}`;
+        }
+        
+        function viewUsage(baseId) {
+            window.location.href = `/question-usage.html?baseId=${baseId}`;
+        }
+        
+        // 创建题目表单提交
+        document.getElementById('createForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            const title = document.getElementById('qTitle').value;
+            const type = document.getElementById('qType').value;
+            let config = {};
+            
+            if (type === 'text') {
+                const minLength = document.getElementById('minLength')?.value || 0;
+                const maxLength = document.getElementById('maxLength')?.value || 500;
+                config = { minLength: parseInt(minLength), maxLength: parseInt(maxLength) };
+            } else if (type === 'number') {
+                const minValue = document.getElementById('minValue')?.value;
+                const maxValue = document.getElementById('maxValue')?.value;
+                const integerOnly = document.getElementById('integerOnly')?.checked || false;
+                config = {
+                    minValue: minValue ? parseFloat(minValue) : undefined,
+                    maxValue: maxValue ? parseFloat(maxValue) : undefined,
+                    integerOnly: integerOnly
+                };
+            } else if (type === 'single_choice') {
+                const optionsText = document.getElementById('options')?.value || '';
+                const options = optionsText.split('\n')
+                    .filter(line => line.trim())
+                    .map(line => {
+                        const [value, label] = line.split('|');
+                        return { value: value?.trim() || '', label: label?.trim() || value?.trim() || '' };
+                    });
+                config = { options };
+            } else if (type === 'multi_choice') {
+                const optionsText = document.getElementById('options')?.value || '';
+                const options = optionsText.split('\n')
+                    .filter(line => line.trim())
+                    .map(line => {
+                        const [value, label] = line.split('|');
+                        return { value: value?.trim() || '', label: label?.trim() || value?.trim() || '' };
+                    });
+                const minSelect = parseInt(document.getElementById('minSelect')?.value || 1);
+                const maxSelect = parseInt(document.getElementById('maxSelect')?.value || 3);
+                config = { options, minSelect, maxSelect };
+            }
+            
+            try {
+                const res = await fetch(`${API_BASE}/questions/create`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${token}`
+                    },
+                    body: JSON.stringify({ title, type, config, changeNote: '创建题目' })
+                });
+                const data = await res.json();
+                if (data.success) {
+                    showToast('题目创建成功');
+                    closeModal();
+                    loadQuestions();
+                } else {
+                    showToast(data.error, true);
+                }
+            } catch (err) {
+                showToast('创建失败: ' + err.message, true);
+            }
+        });
+        
+        function getTypeName(type) {
+            const types = {
+                'single_choice': '单选题',
+                'multi_choice': '多选题',
+                'text': '文本题',
+                'number': '数字题'
+            };
+            return types[type] || type;
+        }
+        
+        function escapeHtml(str) {
+            if (!str) return '';
+            return String(str).replace(/[&<>]/g, function(m) {
+                if (m === '&') return '&amp;';
+                if (m === '<') return '&lt;';
+                if (m === '>') return '&gt;';
+                return m;
+            });
+        }
+        
+        function logout() {
+            localStorage.removeItem('token');
+            localStorage.removeItem('user');
+            window.location.href = '/';
+        }
+        
+        window.onclick = function(event) {
+            const modal = document.getElementById('createModal');
+            if (event.target === modal) closeModal();
+        }
+        
+        // 初始化
+        loadMyQuestions();
+    </script>
+</body>
+</html>

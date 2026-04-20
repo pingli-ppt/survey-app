@@ -1,0 +1,540 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>版本历史 - 问卷系统</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #f5f5f5;
+            min-height: 100vh;
+        }
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 20px 30px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 15px;
+        }
+        .header h1 {
+            font-size: 24px;
+        }
+        .nav-links {
+            display: flex;
+            gap: 15px;
+            flex-wrap: wrap;
+        }
+        .nav-links a {
+            color: white;
+            text-decoration: none;
+            padding: 8px 16px;
+            border-radius: 8px;
+            background: rgba(255,255,255,0.2);
+        }
+        .container {
+            max-width: 1000px;
+            margin: 0 auto;
+            padding: 30px 20px;
+        }
+        .card {
+            background: white;
+            border-radius: 12px;
+            padding: 25px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        .question-info {
+            margin-bottom: 20px;
+            padding-bottom: 20px;
+            border-bottom: 1px solid #eee;
+        }
+        .question-title {
+            font-size: 24px;
+            font-weight: bold;
+            color: #333;
+            margin-bottom: 10px;
+        }
+        .question-meta {
+            display: flex;
+            gap: 20px;
+            flex-wrap: wrap;
+            color: #666;
+            font-size: 14px;
+        }
+        .current-version {
+            background: #d4edda;
+            color: #155724;
+            padding: 4px 12px;
+            border-radius: 20px;
+            display: inline-block;
+        }
+        .version-list {
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+        }
+        .version-item {
+            background: #f8f9fa;
+            border-radius: 12px;
+            padding: 20px;
+            border-left: 4px solid #667eea;
+            transition: all 0.3s;
+        }
+        .version-item.current {
+            border-left-color: #28a745;
+            background: #f0fff4;
+        }
+        .version-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+        .version-number {
+            font-size: 18px;
+            font-weight: bold;
+            color: #667eea;
+        }
+        .version-badge {
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 12px;
+        }
+        .badge-current {
+            background: #28a745;
+            color: white;
+        }
+        .badge-parent {
+            background: #ffc107;
+            color: #333;
+        }
+        .version-date {
+            color: #999;
+            font-size: 12px;
+        }
+        .version-content {
+            margin-bottom: 15px;
+        }
+        .version-title {
+            font-size: 16px;
+            font-weight: 500;
+            margin-bottom: 10px;
+        }
+        .version-config {
+            background: #e9ecef;
+            padding: 10px;
+            border-radius: 8px;
+            font-family: monospace;
+            font-size: 12px;
+            overflow-x: auto;
+        }
+        .change-note {
+            background: #fff3cd;
+            padding: 10px;
+            border-radius: 8px;
+            margin: 10px 0;
+            font-size: 13px;
+            color: #856404;
+        }
+        .version-actions {
+            display: flex;
+            gap: 10px;
+            margin-top: 15px;
+            flex-wrap: wrap;
+        }
+        .btn {
+            padding: 8px 16px;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 13px;
+            font-weight: 500;
+            transition: all 0.3s;
+        }
+        .btn-primary {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(102,126,234,0.4);
+        }
+        .btn-secondary {
+            background: #6c757d;
+            color: white;
+        }
+        .btn-outline {
+            background: transparent;
+            border: 1px solid #667eea;
+            color: #667eea;
+        }
+        .btn-outline:hover {
+            background: #667eea;
+            color: white;
+        }
+        .loading {
+            text-align: center;
+            padding: 50px;
+            color: #999;
+        }
+        .error {
+            background: #f8d7da;
+            color: #721c24;
+            padding: 12px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+        }
+        .toast {
+            position: fixed;
+            bottom: 30px;
+            right: 30px;
+            background: #28a745;
+            color: white;
+            padding: 12px 24px;
+            border-radius: 8px;
+            z-index: 1000;
+            animation: fadeInOut 2s ease;
+        }
+        @keyframes fadeInOut {
+            0% { opacity: 0; transform: translateY(20px); }
+            15% { opacity: 1; transform: translateY(0); }
+            85% { opacity: 1; transform: translateY(0); }
+            100% { opacity: 0; transform: translateY(20px); }
+        }
+        .back-link {
+            display: inline-block;
+            margin-bottom: 20px;
+            color: #667eea;
+            text-decoration: none;
+        }
+        .back-link:hover {
+            text-decoration: underline;
+        }
+        .modal {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.5);
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+            display: none;
+        }
+        .modal-content {
+            background: white;
+            padding: 30px;
+            border-radius: 12px;
+            max-width: 400px;
+            width: 90%;
+            text-align: center;
+        }
+        .modal-buttons {
+            display: flex;
+            gap: 15px;
+            justify-content: center;
+            margin-top: 20px;
+        }
+        code {
+            background: #f8f9fa;
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-family: monospace;
+            font-size: 12px;
+        }
+        @media (max-width: 768px) {
+            .version-header {
+                flex-direction: column;
+                align-items: flex-start;
+            }
+            .version-actions {
+                flex-wrap: wrap;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>📜 版本历史</h1>
+        <div class="nav-links">
+            <a href="/question-bank.html">📚 我的题库</a>
+            <a href="/dashboard.html">📋 控制台</a>
+            <a href="#" onclick="logout()">🚪 退出</a>
+        </div>
+    </div>
+    
+    <div class="container">
+        <a href="/question-bank.html" class="back-link">← 返回题库</a>
+        
+        <div id="content">
+            <div class="loading">加载中...</div>
+        </div>
+    </div>
+    
+    <div id="restoreModal" class="modal">
+        <div class="modal-content">
+            <h2>确认恢复版本</h2>
+            <p id="restoreMessage"></p>
+            <div class="modal-buttons">
+                <button class="btn btn-secondary" onclick="closeRestoreModal()">取消</button>
+                <button class="btn btn-primary" onclick="confirmRestore()">确认恢复</button>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        const API_BASE = '/api';
+        const token = localStorage.getItem('token');
+        
+        if (!token) {
+            window.location.href = '/';
+        }
+        
+        let currentBaseId = null;
+        let restoreTarget = null;
+        
+        function getUrlParams() {
+            const params = {};
+            const query = window.location.search.substring(1);
+            if (query) {
+                const pairs = query.split('&');
+                for (const pair of pairs) {
+                    const [key, value] = pair.split('=');
+                    if (key) params[decodeURIComponent(key)] = decodeURIComponent(value || '');
+                }
+            }
+            return params;
+        }
+        
+        function showToast(message, isError = false) {
+            const toast = document.createElement('div');
+            toast.className = 'toast';
+            toast.style.background = isError ? '#dc3545' : '#28a745';
+            toast.textContent = message;
+            document.body.appendChild(toast);
+            setTimeout(() => toast.remove(), 3000);
+        }
+        
+        async function loadVersions() {
+            const params = getUrlParams();
+            const baseId = params.baseId;
+            
+            if (!baseId) {
+                document.getElementById('content').innerHTML = `
+                    <div class="card">
+                        <div class="error">❌ 缺少题目ID</div>
+                        <a href="/question-bank.html">返回题库</a>
+                    </div>
+                `;
+                return;
+            }
+            
+            currentBaseId = baseId;
+            
+            try {
+                const res = await fetch(`${API_BASE}/questions/${baseId}`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                const data = await res.json();
+                
+                if (!data.success) {
+                    throw new Error(data.error || '加载失败');
+                }
+                
+                renderVersions(data.data);
+            } catch (err) {
+                document.getElementById('content').innerHTML = `
+                    <div class="card">
+                        <div class="error">❌ 加载失败：${err.message}</div>
+                        <a href="/question-bank.html">返回题库</a>
+                    </div>
+                `;
+            }
+        }
+        
+        function renderVersions(data) {
+            const versions = data.versions || [];
+            const currentVersionNum = data.currentVersion;
+            
+            const versionsHtml = versions.map((v, index) => {
+                const isCurrent = v.version === currentVersionNum;
+                const isParent = !isCurrent && v.version === currentVersionNum - 1;
+                
+                return `
+                    <div class="version-item ${isCurrent ? 'current' : ''}">
+                        <div class="version-header">
+                            <div>
+                                <span class="version-number">v${v.version}</span>
+                                ${isCurrent ? '<span class="version-badge badge-current" style="margin-left:10px;">当前版本</span>' : ''}
+                                ${v.parentVersionId ? '<span class="version-badge badge-parent" style="margin-left:10px;">从 v' + (v.version - 1) + ' 修改</span>' : '<span class="version-badge" style="margin-left:10px;background:#e9ecef;">初始版本</span>'}
+                            </div>
+                            <div class="version-date">📅 ${formatDate(v.createdAt)}</div>
+                        </div>
+                        
+                        <div class="version-content">
+                            <div class="version-title">📝 ${escapeHtml(v.title)}</div>
+                            <div class="question-meta" style="margin-top: 8px;">
+                                <span>🔖 类型: ${getTypeName(v.type)}</span>
+                            </div>
+                            ${v.changeNote ? `<div class="change-note">💡 修改说明：${escapeHtml(v.changeNote)}</div>` : ''}
+                            <div class="version-config">
+                                <strong>配置详情：</strong><br>
+                                ${escapeHtml(JSON.stringify(v.config, null, 2))}
+                            </div>
+                        </div>
+                        
+                        <div class="version-actions">
+                            ${!isCurrent ? `<button class="btn btn-primary" onclick="showRestoreDialog(${v.version})">恢复到 v${v.version}</button>` : ''}
+                            <button class="btn btn-outline" onclick="copyVersionId('${v.versionId}')">复制版本ID</button>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+            
+            // 版本演进图
+            let relationHtml = '';
+            if (versions.length > 1) {
+                relationHtml = `
+                    <div class="card" style="margin-bottom: 20px;">
+                        <h3>🔗 版本演进关系</h3>
+                        <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 10px; padding: 15px 0;">
+                            ${versions.map(v => `
+                                <span style="padding: 8px 16px; background: ${v.version === currentVersionNum ? '#28a745' : '#667eea'}; color: white; border-radius: 20px; font-size: 14px;">
+                                    v${v.version}
+                                </span>
+                                ${v.version < versions.length ? '<span style="font-size: 20px;">→</span>' : ''}
+                            `).join('')}
+                        </div>
+                        <div style="font-size: 13px; color: #666;">
+                            💡 当前版本：v${currentVersionNum}
+                            ${currentVersionNum !== versions[versions.length-1]?.version ? `（最新版本为 v${versions[versions.length-1]?.version}）` : ''}
+                        </div>
+                    </div>
+                `;
+            }
+            
+            document.getElementById('content').innerHTML = `
+                <div class="card">
+                    <div class="question-info">
+                        <div class="question-title">📋 题目信息</div>
+                        <div class="question-meta">
+                            <span>🔑 基础ID: <code>${data.baseId}</code></span>
+                            <span>📊 使用次数: ${data.usageCount || 0}</span>
+                            <span>🔒 共享状态: ${data.isPublic ? '公开' : '私有'}</span>
+                        </div>
+                    </div>
+                </div>
+                
+                ${relationHtml}
+                
+                <div class="card">
+                    <h2>📜 版本列表（共 ${versions.length} 个版本）</h2>
+                    <div class="version-list">
+                        ${versionsHtml || '<div style="text-align:center;color:#999;padding:40px;">暂无版本数据</div>'}
+                    </div>
+                </div>
+            `;
+        }
+        
+        function showRestoreDialog(version) {
+            restoreTarget = version;
+            const msg = document.getElementById('restoreMessage');
+            msg.innerHTML = `确定要将题目恢复到 v${version} 吗？<br><br>
+            这将创建一个新版本（当前版本 + 1），内容与 v${version} 相同。<br>
+            已有问卷不受影响。`;
+            document.getElementById('restoreModal').style.display = 'flex';
+        }
+        
+        function closeRestoreModal() {
+            document.getElementById('restoreModal').style.display = 'none';
+            restoreTarget = null;
+        }
+        
+        async function confirmRestore() {
+            if (!restoreTarget || !currentBaseId) return;
+            
+            try {
+                const res = await fetch(`${API_BASE}/questions/${currentBaseId}/restore/${restoreTarget}`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${token}`
+                    }
+                });
+                const data = await res.json();
+                
+                if (data.success) {
+                    showToast(data.message);
+                    closeRestoreModal();
+                    loadVersions();
+                } else {
+                    showToast(data.error, true);
+                }
+            } catch (err) {
+                showToast('恢复失败：' + err.message, true);
+            }
+        }
+        
+        function copyVersionId(versionId) {
+            navigator.clipboard.writeText(versionId).then(() => {
+                showToast('✅ 版本ID已复制');
+            }).catch(() => {
+                showToast('❌ 复制失败', true);
+            });
+        }
+        
+        function formatDate(dateStr) {
+            if (!dateStr) return '';
+            const date = new Date(dateStr);
+            return `${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,'0')}-${String(date.getDate()).padStart(2,'0')} ${String(date.getHours()).padStart(2,'0')}:${String(date.getMinutes()).padStart(2,'0')}`;
+        }
+        
+        function getTypeName(type) {
+            const types = {
+                'single_choice': '单选题',
+                'multi_choice': '多选题',
+                'text': '文本题',
+                'number': '数字题'
+            };
+            return types[type] || type;
+        }
+        
+        function escapeHtml(str) {
+            if (!str) return '';
+            return String(str).replace(/[&<>]/g, function(m) {
+                if (m === '&') return '&amp;';
+                if (m === '<') return '&lt;';
+                if (m === '>') return '&gt;';
+                return m;
+            });
+        }
+        
+        function logout() {
+            localStorage.removeItem('token');
+            localStorage.removeItem('user');
+            window.location.href = '/';
+        }
+        
+        window.onclick = function(event) {
+            const modal = document.getElementById('restoreModal');
+            if (event.target === modal) {
+                closeRestoreModal();
+            }
+        }
+        
+        loadVersions();
+    </script>
+</body>
+</html>

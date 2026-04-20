@@ -22,34 +22,26 @@
             display: flex;
             justify-content: space-between;
             align-items: center;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            flex-wrap: wrap;
+            gap: 15px;
         }
         .header h1 {
             font-size: 24px;
+        }
+        .nav-links {
             display: flex;
-            align-items: center;
-            gap: 10px;
+            gap: 15px;
+            flex-wrap: wrap;
         }
-        .user-info {
-            display: flex;
-            align-items: center;
-            gap: 20px;
-        }
-        .username {
-            font-size: 16px;
-            font-weight: 500;
-        }
-        .logout-btn {
-            background: rgba(255,255,255,0.2);
-            border: none;
-            padding: 8px 20px;
-            border-radius: 8px;
+        .nav-links a {
             color: white;
-            cursor: pointer;
-            font-size: 14px;
+            text-decoration: none;
+            padding: 8px 16px;
+            border-radius: 8px;
+            background: rgba(255,255,255,0.2);
             transition: all 0.3s;
         }
-        .logout-btn:hover {
+        .nav-links a:hover {
             background: rgba(255,255,255,0.3);
         }
         .container {
@@ -95,10 +87,13 @@
             display: flex;
             justify-content: space-around;
             text-align: center;
+            flex-wrap: wrap;
+            gap: 20px;
             box-shadow: 0 2px 10px rgba(0,0,0,0.1);
         }
         .stat-card {
             flex: 1;
+            min-width: 100px;
         }
         .stat-number {
             font-size: 32px;
@@ -182,6 +177,8 @@
             display: flex;
             justify-content: space-between;
             align-items: center;
+            flex-wrap: wrap;
+            gap: 10px;
         }
         .survey-id-box code {
             color: #667eea;
@@ -204,6 +201,7 @@
             display: flex;
             gap: 10px;
             margin-top: 15px;
+            flex-wrap: wrap;
         }
         .survey-actions button {
             flex: 1;
@@ -236,6 +234,13 @@
         .btn-fill:hover {
             background: #218838;
         }
+        .btn-edit {
+            background: #ffc107;
+            color: #333;
+        }
+        .btn-edit:hover {
+            background: #e0a800;
+        }
         .empty-state {
             text-align: center;
             padding: 60px 20px;
@@ -263,7 +268,7 @@
             position: fixed;
             bottom: 30px;
             right: 30px;
-            background: #333;
+            background: #28a745;
             color: white;
             padding: 12px 24px;
             border-radius: 8px;
@@ -282,30 +287,21 @@
             }
             .stats-summary {
                 flex-direction: column;
-                gap: 15px;
             }
             .header {
                 flex-direction: column;
-                gap: 15px;
                 text-align: center;
-            }
-            .survey-actions {
-                flex-wrap: wrap;
-            }
-            .survey-actions button {
-                min-width: 100px;
             }
         }
     </style>
 </head>
 <body>
     <div class="header">
-        <h1>
-            📋 我的问卷
-        </h1>
-        <div class="user-info">
-            <span class="username" id="username">用户</span>
-            <button class="logout-btn" onclick="logout()">退出登录</button>
+        <h1>📋 我的问卷</h1>
+        <div class="nav-links">
+            <a href="/question-bank.html">📚 我的题库</a>
+            <a href="/create.html">➕ 创建问卷</a>
+            <a href="#" onclick="logout()">🚪 退出</a>
         </div>
     </div>
     
@@ -454,6 +450,7 @@
                                 <button class="btn-fill" onclick="fillSurvey('${survey.surveyId}')">📝 填写</button>
                                 <button class="btn-stats" onclick="viewStats('${survey.surveyId}')">📊 统计</button>
                                 <button class="btn-link" onclick="copyLink('${survey.surveyId}')">🔗 复制链接</button>
+                                <button class="btn-edit" onclick="editSurvey('${survey.surveyId}')">✏️ 编辑</button>
                             </div>
                         </div>
                     `).join('')}
@@ -516,6 +513,10 @@
             window.location.href = `/survey.html?surveyId=${surveyId}`;
         }
         
+        function editSurvey(surveyId) {
+            window.location.href = `/edit.html?surveyId=${surveyId}`;
+        }
+        
         function viewStats(surveyId) {
             console.log('查看统计，问卷ID:', surveyId);
             if (!surveyId) {
@@ -534,11 +535,7 @@
             }, 500);
         }
         
-        // 显示用户名
         const user = JSON.parse(localStorage.getItem('user') || '{}');
-        document.getElementById('username').textContent = user.username || '用户';
-        
-        // 检查登录状态
         if (!getToken()) {
             showToast('请先登录', true);
             setTimeout(() => {
